@@ -184,12 +184,12 @@ func GetTestsMaxCoverage(
 			if !triggerTestedSet[t] {
 				untestedTriggers = append(untestedTriggers, t)
 			}
-			msg := "Untested triggers: " + strings.Join(untestedTriggers, ", ")
+			msg := "untested triggers: " + strings.Join(untestedTriggers, ", ")
 			return []string{}, errors.New(msg)
 		}
 	}
 	if float64(linesCovered)/float64(linesTotal) < 0.75 {
-		return []string{}, errors.New("Coverage less than 75%")
+		return []string{}, errors.New("coverage less than 75%")
 	}
 
 	return res, nil

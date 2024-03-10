@@ -6,7 +6,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 
@@ -30,18 +29,20 @@ type manifest struct {
 
 func main() {
 	cfgArg := flag.String("config", "config.json", "Path to SF org authorisation information (config.json)")
-	pkgArg := flag.String("package", "package.xml", "Path to the deployment artifact (package.xml)")
+	pkgArg := flag.String("packages", "package.xml", "Comma-separated list of paths to deployment artifacts (package.xml)")
 
 	flag.Parse()
 
 	cfg, err := loadConfig(*cfgArg)
 	if err != nil {
-		log.Fatal(err)
+		fmt.Printf("error reading config: %v\n", err.Error())
+		os.Exit(1)
 	}
 
 	apexClasses, apexTriggers, err := loadApex(*pkgArg)
 	if err != nil {
-		log.Fatal(err)
+		fmt.Printf("error reading apex from package: %v\n", err.Error())
+		os.Exit(1)
 	}
 
 	if len(apexClasses) == 0 && len(apexTriggers) == 0 {
@@ -57,7 +58,8 @@ func main() {
 
 	tests, err := coverage.RequestTestsMaxCoverage(con, apexClasses, apexTriggers)
 	if err != nil {
-		log.Fatal(err)
+		fmt.Printf("error requesting coverage: %v\n", err.Error())
+		os.Exit(1)
 	}
 
 	output := strings.Join(tests, " ")
@@ -78,34 +80,53 @@ func loadConfig(pathToCfg string) (config, error) {
 		return config{}, fmt.Errorf("decoder.Decode: %w", err)
 	}
 
-	if cfg.BaseUrl == "" || cfg.ClientId == "" || cfg.ClientSecret == "" {
-		return config{}, errors.New("Missing required parameters in config " + pathToCfg)
+	if cfg.ApiVersion == "" || cfg.BaseUrl == "" || cfg.ClientId == "" || cfg.ClientSecret == "" {
+		return config{}, errors.New("missing required parameters in config " + pathToCfg)
 	}
 
 	return cfg, nil
 }
 
 func loadApex(pathToPkg string) ([]string, []string, error) {
-	pkgFile, err := os.Open(pathToPkg)
-	if err != nil {
-		return []string{}, []string{}, fmt.Errorf("os.Open: %w", err)
-	}
-	defer pkgFile.Close()
+	var (
+		classMap   = make(map[string]bool)
+		triggerMap = make(map[string]bool)
+	)
 
-	var pkg manifest
-	if err := xml.NewDecoder(pkgFile).Decode(&pkg); err != nil {
-		return []string{}, []string{}, fmt.Errorf("xml.Decoder.Decode: %w", err)
-	}
+	paths := strings.Split(pathToPkg, ",")
+	for _, p := range paths {
 
-	apexClasses, apexTriggers := make([]string, 0), make([]string, 0)
-	for _, t := range pkg.Types {
-		switch t.Name {
-		case "ApexClass":
-			apexClasses = append(apexClasses, t.Members...)
-		case "ApexTrigger":
-			apexTriggers = append(apexTriggers, t.Members...)
+		pkgFile, err := os.Open(p)
+		if err != nil {
+			return []string{}, []string{}, fmt.Errorf("os.Open: %w", err)
+		}
+		defer pkgFile.Close()
+
+		var pkg manifest
+		if err := xml.NewDecoder(pkgFile).Decode(&pkg); err != nil {
+			return []string{}, []string{}, fmt.Errorf("xml.Decoder.Decode: %w", err)
+		}
+
+		for _, t := range pkg.Types {
+			switch t.Name {
+			case "ApexClass":
+				for _, v := range t.Members {
+					classMap[v] = true
+				}
+			case "ApexTrigger":
+				for _, v := range t.Members {
+					triggerMap[v] = true
+				}
+			}
 		}
 	}
 
-	return apexClasses, apexTriggers, nil
+	classes, triggers := make([]string, 0), make([]string, 0)
+	for c := range classMap {
+		classes = append(classes, c)
+	}
+	for c := range triggerMap {
+		triggers = append(triggers, c)
+	}
+	return classes, triggers, nil
 }

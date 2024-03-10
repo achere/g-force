@@ -94,7 +94,7 @@ func (c *Connection) getTokenClientCredentials() (string, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		return "", errors.New("Token request returned " + strconv.Itoa(resp.StatusCode))
+		return "", errors.New("token request returned " + strconv.Itoa(resp.StatusCode))
 	}
 
 	respBody, err := io.ReadAll(resp.Body)

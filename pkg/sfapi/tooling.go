@@ -98,11 +98,11 @@ func (c *Connection) ExecuteAnonymousRest(body string) error {
 	}
 
 	if parsedResponse.Compiled {
-		msg := "Error on line " +
+		msg := "error on line " +
 			strconv.Itoa(parsedResponse.Line) + ":" + strconv.Itoa(parsedResponse.Column) + " - " +
 			parsedResponse.ExceptionMessage + " " + parsedResponse.ExceptionStackTrace
 		return errors.New(msg)
 	}
 
-	return errors.New("Didn't compile: " + parsedResponse.CompileProblem)
+	return errors.New("didn't compile: " + parsedResponse.CompileProblem)
 }
