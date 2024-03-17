@@ -16,3 +16,6 @@ bin/
 # JSON and XML files created for testing
 *.json
 *.xml
+
+# MacOS trash
+.DS_Store

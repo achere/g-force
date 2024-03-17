@@ -35,13 +35,13 @@ func main() {
 
 	cfg, err := loadConfig(*cfgArg)
 	if err != nil {
-		fmt.Printf("error reading config: %v\n", err.Error())
+		fmt.Fprintf(os.Stderr, "error reading config: %v\n", err.Error())
 		os.Exit(1)
 	}
 
 	apexClasses, apexTriggers, err := loadApex(*pkgArg)
 	if err != nil {
-		fmt.Printf("error reading apex from package: %v\n", err.Error())
+		fmt.Fprintf(os.Stderr, "error reading apex from package: %v\n", err.Error())
 		os.Exit(1)
 	}
 
@@ -58,7 +58,7 @@ func main() {
 
 	tests, err := coverage.RequestTestsMaxCoverage(con, apexClasses, apexTriggers)
 	if err != nil {
-		fmt.Printf("error requesting coverage: %v\n", err.Error())
+		fmt.Fprintf(os.Stderr, "error requesting coverage: %v\n", err.Error())
 		os.Exit(1)
 	}
 

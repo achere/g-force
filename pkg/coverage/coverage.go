@@ -3,39 +3,57 @@ package coverage
 import (
 	"errors"
 	"fmt"
-	"strings"
+	"math"
 
 	"github.com/achere/g-force/pkg/sfapi"
 )
 
 type Apex struct {
-	Id        string
-	IsTrigger bool
-	Name      string
-	Lines     int
-	Coverage  map[string][]bool
+	Id           string
+	IsTrigger    bool
+	Name         string
+	Lines        int
+	Coverage     map[string][]bool
+	linesCovered int
+	maxLine      int
+}
+
+func (a *Apex) GetCovLines() int {
+	if aCovLines := a.linesCovered; aCovLines != 0 {
+		return aCovLines
+	}
+	totalCov := make([]bool, a.maxLine)
+	for _, c := range a.Coverage {
+		totalCov = mergeCoverage(totalCov, c)
+	}
+
+	for _, l := range totalCov {
+		if l {
+			a.linesCovered++
+		}
+	}
+	return a.linesCovered
 }
 
 type Test struct {
-	Id       string
-	Name     string
-	Coverage map[string][]bool
-	covLines int
+	Id           string
+	Name         string
+	Coverage     map[string][]bool
+	linesCovered int
 }
 
 func (t *Test) GetCovLines() int {
-	if tCovLines := t.covLines; tCovLines != 0 {
+	if tCovLines := t.linesCovered; tCovLines != 0 {
 		return tCovLines
 	}
-	var res int
 	for _, c := range t.Coverage {
 		for _, l := range c {
 			if l {
-				res++
+				t.linesCovered++
 			}
 		}
 	}
-	return res
+	return t.linesCovered
 }
 
 func RequestTestsMaxCoverage(
@@ -99,6 +117,7 @@ func ParseCoverage(data []sfapi.ApexCodeCoverage) (map[string]Test, map[string]A
 				Id:        apexId,
 				IsTrigger: c.ApexClassOrTrigger.Attributes.Type == "ApexTrigger",
 				Name:      apexName,
+				maxLine:   maxLine,
 			}
 			apex.Lines = lenCovLines + lenUncovLines
 
@@ -148,48 +167,67 @@ func GetTestsMaxCoverage(
 	apexTriggers []string,
 ) ([]string, error) {
 	var (
-		res              []string
-		triggerSet       = make(map[string]bool)
-		triggerTestedSet = make(map[string]bool)
+		res             []string
+		classSet        = make(map[string]bool)
+		classCoverage   = make(map[string]float64)
+		triggerSet      = make(map[string]bool)
+		triggerCoverage = make(map[string]float64)
 	)
 
 	for _, v := range apexTriggers {
 		triggerSet[v] = true
 	}
+	for _, v := range apexClasses {
+		classSet[v] = true
+	}
 
-	var linesTotal, linesCovered int
+	var linesTotal, linesCoveredTotal int
 	for _, apex := range apexMap {
-		var (
-			isClass   = contains(apexClasses, apex.Name)
-			isTrigger = contains(apexTriggers, apex.Name)
-		)
-		if isClass || isTrigger {
-			linesTotal += apex.Lines
-			if isTrigger {
-				triggerTestedSet[apex.Name] = true
-			}
+		linesTotal += apex.Lines
+		isTrigger := contains(apexTriggers, apex.Name)
 
-			for testId := range apex.Coverage {
-				test := testMap[testId]
-				res = append(res, test.Name)
+		coveredLines := apex.GetCovLines()
+		linesCoveredTotal += coveredLines
+		for testId := range apex.Coverage {
+			test := testMap[testId]
+			res = append(res, test.Name)
+		}
 
-				linesCovered += test.GetCovLines()
-			}
+		coverage := math.Ceil(float64(coveredLines)/float64(apex.Lines)*100) / 100
+		if isTrigger {
+			triggerCoverage[apex.Name] = coverage
+		} else {
+			classCoverage[apex.Name] = coverage
 		}
 	}
 
-	if len(triggerTestedSet) < len(triggerSet) {
-		untestedTriggers := make([]string, 0)
-		for t := range triggerSet {
-			if !triggerTestedSet[t] {
-				untestedTriggers = append(untestedTriggers, t)
-			}
-			msg := "untested triggers: " + strings.Join(untestedTriggers, ", ")
-			return []string{}, errors.New(msg)
+	var errorMsg string
+	for t := range triggerSet {
+		coverage, ok := triggerCoverage[t]
+		if !ok {
+			errorMsg += "untested trigger " + t + "\n"
+		}
+		if coverage < 0.75 {
+			errorMsg += "coverage of trigger " + t + " is less than 75%: " + fmt.Sprintf("%.2f%%", coverage*100) + "\n"
 		}
 	}
-	if float64(linesCovered)/float64(linesTotal) < 0.75 {
-		return []string{}, errors.New("coverage less than 75%")
+	for c := range classSet {
+		coverage, ok := classCoverage[c]
+		if !ok {
+			errorMsg += "untested class " + c + "\n"
+		}
+		if coverage < 0.75 {
+			errorMsg += "coverage of class " + c + " is less than 75%: " + fmt.Sprintf("%.2f%%", coverage*100) + "\n"
+		}
+	}
+
+	if len(errorMsg) > 0 {
+		return []string{}, errors.New(errorMsg)
+	}
+
+	totalCov := math.Ceil(float64(linesCoveredTotal)/float64(linesTotal)*100) / 100
+	if totalCov < 0.75 {
+		return []string{}, errors.New("total coverage is less than 75%: " + fmt.Sprintf("%.2f%%", totalCov*100))
 	}
 
 	return res, nil
