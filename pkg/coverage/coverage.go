@@ -8,6 +8,81 @@ import (
 	"github.com/achere/g-force/pkg/sfapi"
 )
 
+const (
+	StratMaxCoverage         = "MaxCoverage"
+	StratMaxCoverageWithDeps = "MaxCoverageWithDependencies"
+)
+
+var strategyToGetterMap = map[string]testNamesRequester{
+	StratMaxCoverage:         RequestTestsMaxCoverage,
+	StratMaxCoverageWithDeps: RequestTestsMaxCoverageWithDeps,
+}
+
+type testNamesRequester func(*sfapi.Connection, []string, []string) ([]string, error)
+
+func RequestTestsWithStrategy(
+	strategy string,
+	con *sfapi.Connection,
+	classes []string,
+	triggers []string,
+) ([]string, error) {
+	f := strategyToGetterMap[strategy]
+
+	if f == nil {
+		return []string{}, errors.New("Unsupported strategy provided: " + strategy)
+	}
+
+	return f(con, classes, triggers)
+}
+
+func RequestTestsMaxCoverage(
+	con *sfapi.Connection,
+	classes []string,
+	triggers []string,
+) ([]string, error) {
+	coverages, err := con.GetCoverage(append(classes, triggers...))
+	if err != nil {
+		return []string{}, fmt.Errorf("con.GetCoverage: %w", err)
+	}
+
+	testMap, apexMap := ParseCoverage(coverages)
+	tests, err := GetTestsMaxCoverage(testMap, apexMap, classes, triggers)
+	if err != nil {
+		return []string{}, fmt.Errorf("GetTestsMaxCoverage: %w", err)
+	}
+
+	return tests, nil
+}
+
+func RequestTestsMaxCoverageWithDeps(
+	con *sfapi.Connection,
+	classes []string,
+	triggers []string,
+) ([]string, error) {
+	deps, err := con.GetApexDependencies([]string{"ApexTrigger", "ApexClass"})
+	if err != nil {
+		return []string{}, fmt.Errorf("con.GetCoverage: %w", err)
+	}
+
+	apexDeps := ParseDependencies(deps, classes, triggers)
+
+	coverages, err := con.GetCoverage(
+		append(append(classes, triggers...), apexDeps...),
+	)
+	if err != nil {
+		return []string{}, fmt.Errorf("con.GetCoverage: %w", err)
+	}
+
+	testMap, apexMap := ParseCoverage(coverages)
+
+	tests, err := GetTestsMaxCoverage(testMap, apexMap, classes, triggers)
+	if err != nil {
+		return []string{}, fmt.Errorf("GetTestsMaxCoverage: %w", err)
+	}
+
+	return tests, nil
+}
+
 type Apex struct {
 	Id           string
 	IsTrigger    bool
@@ -54,25 +129,6 @@ func (t *Test) GetCovLines() int {
 		}
 	}
 	return t.linesCovered
-}
-
-func RequestTestsMaxCoverage(
-	con *sfapi.Connection,
-	apexClasses []string,
-	apexTrigers []string,
-) ([]string, error) {
-	coverages, err := con.GetCoverage(append(apexClasses, apexTrigers...))
-	if err != nil {
-		return []string{}, fmt.Errorf("con.GetCoverage: %w", err)
-	}
-
-	testMap, apexMap := ParseCoverage(coverages)
-	tests, err := GetTestsMaxCoverage(testMap, apexMap, apexClasses, apexTrigers)
-	if err != nil {
-		return []string{}, fmt.Errorf("GetTestsMaxCoverage: %w", err)
-	}
-
-	return tests, nil
 }
 
 func ParseCoverage(data []sfapi.ApexCodeCoverage) (map[string]Test, map[string]Apex) {
@@ -160,11 +216,92 @@ func mergeCoverage(cov1, cov2 []bool) []bool {
 	return res
 }
 
+func ParseDependencies(
+	mcd []sfapi.MetadataComponentDependency,
+	classes, triggers []string,
+) []string {
+	type Node struct {
+		value  Apex
+		isRoot bool
+		deps   []string
+	}
+
+	depMap := make(map[string]Node)
+	for _, d := range mcd {
+		_, ok := depMap[d.RefId]
+		if !ok {
+			apexRef := Apex{
+				Id:        d.RefId,
+				IsTrigger: d.RefType == "ApexTrigger",
+				Name:      d.RefName,
+			}
+			nodeRef := Node{value: apexRef}
+			depMap[d.RefId] = nodeRef
+		}
+
+		node, ok := depMap[d.Id]
+		if !ok {
+			isTrigger := d.Type == "ApexTrigger"
+			apex := Apex{
+				Id:        d.Id,
+				IsTrigger: isTrigger,
+				Name:      d.Name,
+			}
+			var (
+				isRootTrigger = isTrigger && contains(triggers, d.Name)
+				isRootClass   = !isTrigger && contains(classes, d.Name)
+			)
+			node = Node{
+				value:  apex,
+				isRoot: isRootTrigger || isRootClass,
+				deps:   []string{d.RefId},
+			}
+		} else {
+			node.deps = append(node.deps, d.RefId)
+		}
+		depMap[d.Id] = node
+	}
+
+	var walk func(string, *[]string)
+	walk = func(id string, seen *[]string) {
+		if contains(*seen, id) {
+			return
+		}
+		*seen = append(*seen, id)
+
+		node := depMap[id]
+		if len(node.deps) == 0 {
+			return
+		}
+
+		for _, v := range node.deps {
+			walk(v, seen)
+		}
+	}
+
+	depIds := make([]string, 0)
+	for id, node := range depMap {
+		if !node.isRoot {
+			continue
+		}
+		walk(id, &depIds)
+	}
+
+	res := make([]string, len(depIds))
+	for _, id := range depIds {
+		node := depMap[id]
+		if node.isRoot {
+			continue
+		}
+		res = append(res, node.value.Name)
+	}
+	return res
+}
+
 func GetTestsMaxCoverage(
 	testMap map[string]Test,
 	apexMap map[string]Apex,
-	apexClasses []string,
-	apexTriggers []string,
+	classes, triggers []string,
 ) ([]string, error) {
 	var (
 		res             []string
@@ -174,17 +311,17 @@ func GetTestsMaxCoverage(
 		triggerCoverage = make(map[string]float64)
 	)
 
-	for _, v := range apexTriggers {
+	for _, v := range triggers {
 		triggerSet[v] = true
 	}
-	for _, v := range apexClasses {
+	for _, v := range classes {
 		classSet[v] = true
 	}
 
 	var linesTotal, linesCoveredTotal int
 	for _, apex := range apexMap {
 		linesTotal += apex.Lines
-		isTrigger := contains(apexTriggers, apex.Name)
+		isTrigger := contains(triggers, apex.Name)
 
 		coveredLines := apex.GetCovLines()
 		linesCoveredTotal += coveredLines

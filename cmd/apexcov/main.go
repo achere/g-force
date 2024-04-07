@@ -20,32 +20,53 @@ type config struct {
 	ClientSecret string `json:"clientSecret"`
 }
 
-type manifest struct {
-	Types []struct {
-		Members []string `xml:"members"`
-		Name    string   `xml:"name"`
-	} `xml:"types"`
-}
-
 func main() {
-	cfgArg := flag.String("config", "config.json", "Path to SF org authorisation information (config.json)")
-	pkgArg := flag.String("packages", "package.xml", "Comma-separated list of paths to deployment artifacts (package.xml)")
+	configArg := flag.String(
+		"config",
+		"config.json",
+		"Path to SF org authorisation information - config.json",
+	)
+	packagesArg := flag.String(
+		"packages",
+		"package.xml",
+		"Comma-separated list of paths to deployment artifacts - package.xml",
+	)
+	strategyArg := flag.String(
+		"strategy",
+		"MaxCoverage",
+		`Choose the strategy of getting coverage:
+	- "MaxCoverage" to ouput all tests that provide coverage for the passed in Apex
+	- "MaxCoverageWithDependencies" to output all tests for the passed in Apex and its dependencies`,
+	)
 
 	flag.Parse()
 
-	cfg, err := loadConfig(*cfgArg)
+	if *strategyArg != coverage.StratMaxCoverage &&
+		*strategyArg != coverage.StratMaxCoverageWithDeps {
+		fmt.Fprintf(
+			os.Stderr,
+			`unsupported strategy provided: %v; list of supported values: 
+	- MaxCoverage
+	- MaxCoverageWithDependencies
+`,
+			*strategyArg,
+		)
+		os.Exit(1)
+	}
+
+	cfg, err := loadConfig(*configArg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error reading config: %v\n", err.Error())
 		os.Exit(1)
 	}
 
-	apexClasses, apexTriggers, err := loadApex(*pkgArg)
+	classes, triggers, err := loadApex(*packagesArg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error reading apex from package: %v\n", err.Error())
 		os.Exit(1)
 	}
 
-	if len(apexClasses) == 0 && len(apexTriggers) == 0 {
+	if len(classes) == 0 && len(triggers) == 0 {
 		os.Exit(0)
 	}
 
@@ -56,7 +77,7 @@ func main() {
 		ClientSecret: cfg.ClientSecret,
 	}
 
-	tests, err := coverage.RequestTestsMaxCoverage(con, apexClasses, apexTriggers)
+	tests, err := coverage.RequestTestsWithStrategy(*strategyArg, con, classes, triggers)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error requesting coverage: %v\n", err.Error())
 		os.Exit(1)
@@ -102,7 +123,12 @@ func loadApex(pathToPkg string) ([]string, []string, error) {
 		}
 		defer pkgFile.Close()
 
-		var pkg manifest
+		var pkg struct {
+			Types []struct {
+				Members []string `xml:"members"`
+				Name    string   `xml:"name"`
+			} `xml:"types"`
+		}
 		if err := xml.NewDecoder(pkgFile).Decode(&pkg); err != nil {
 			return []string{}, []string{}, fmt.Errorf("xml.Decoder.Decode: %w", err)
 		}
