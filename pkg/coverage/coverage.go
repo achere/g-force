@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 
 	"github.com/achere/g-force/pkg/sfapi"
 )
@@ -40,7 +41,7 @@ func RequestTestsMaxCoverage(
 	classes []string,
 	triggers []string,
 ) ([]string, error) {
-	coverages, err := con.GetCoverage(append(classes, triggers...))
+	coverages, err := con.GetCoverage(slices.Concat(classes, triggers))
 	if err != nil {
 		return []string{}, fmt.Errorf("con.GetCoverage: %w", err)
 	}
@@ -67,7 +68,7 @@ func RequestTestsMaxCoverageWithDeps(
 	apexDeps := ParseDependencies(deps, classes, triggers)
 
 	coverages, err := con.GetCoverage(
-		append(append(classes, triggers...), apexDeps...),
+		slices.Concat(classes, triggers, apexDeps),
 	)
 	if err != nil {
 		return []string{}, fmt.Errorf("con.GetCoverage: %w", err)
@@ -248,8 +249,8 @@ func ParseDependencies(
 				Name:      d.Name,
 			}
 			var (
-				isRootTrigger = isTrigger && contains(triggers, d.Name)
-				isRootClass   = !isTrigger && contains(classes, d.Name)
+				isRootTrigger = isTrigger && slices.Contains(triggers, d.Name)
+				isRootClass   = !isTrigger && slices.Contains(classes, d.Name)
 			)
 			node = Node{
 				value:  apex,
@@ -264,7 +265,7 @@ func ParseDependencies(
 
 	var walk func(string, *[]string)
 	walk = func(id string, seen *[]string) {
-		if contains(*seen, id) {
+		if slices.Contains(*seen, id) {
 			return
 		}
 		*seen = append(*seen, id)
@@ -321,7 +322,6 @@ func GetTestsMaxCoverage(
 	var linesTotal, linesCoveredTotal int
 	for _, apex := range apexMap {
 		linesTotal += apex.Lines
-		isTrigger := contains(triggers, apex.Name)
 
 		coveredLines := apex.GetCovLines()
 		linesCoveredTotal += coveredLines
@@ -331,9 +331,9 @@ func GetTestsMaxCoverage(
 		}
 
 		coverage := math.Ceil(float64(coveredLines)/float64(apex.Lines)*100) / 100
-		if isTrigger {
+		if slices.Contains(triggers, apex.Name) {
 			triggerCoverage[apex.Name] = coverage
-		} else {
+		} else if slices.Contains(classes, apex.Name) {
 			classCoverage[apex.Name] = coverage
 		}
 	}
@@ -368,13 +368,4 @@ func GetTestsMaxCoverage(
 	}
 
 	return res, nil
-}
-
-func contains[T comparable](elems []T, v T) bool {
-	for _, s := range elems {
-		if v == s {
-			return true
-		}
-	}
-	return false
 }
