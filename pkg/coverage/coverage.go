@@ -19,11 +19,11 @@ var strategyToGetterMap = map[string]testNamesRequester{
 	StratMaxCoverageWithDeps: RequestTestsMaxCoverageWithDeps,
 }
 
-type testNamesRequester func(*sfapi.Connection, []string, []string) ([]string, error)
+type testNamesRequester func(sfapi.Tooling, []string, []string) ([]string, error)
 
 func RequestTestsWithStrategy(
 	strategy string,
-	con *sfapi.Connection,
+	t sfapi.Tooling,
 	classes []string,
 	triggers []string,
 ) ([]string, error) {
@@ -33,15 +33,15 @@ func RequestTestsWithStrategy(
 		return []string{}, errors.New("Unsupported strategy provided: " + strategy)
 	}
 
-	return f(con, classes, triggers)
+	return f(t, classes, triggers)
 }
 
 func RequestTestsMaxCoverage(
-	con *sfapi.Connection,
+	t sfapi.Tooling,
 	classes []string,
 	triggers []string,
 ) ([]string, error) {
-	coverages, err := con.GetCoverage(slices.Concat(classes, triggers))
+	coverages, err := t.GetCoverage(slices.Concat(classes, triggers))
 	if err != nil {
 		return []string{}, fmt.Errorf("con.GetCoverage: %w", err)
 	}
@@ -56,18 +56,18 @@ func RequestTestsMaxCoverage(
 }
 
 func RequestTestsMaxCoverageWithDeps(
-	con *sfapi.Connection,
+	t sfapi.Tooling,
 	classes []string,
 	triggers []string,
 ) ([]string, error) {
-	deps, err := con.GetApexDependencies([]string{"ApexTrigger", "ApexClass"})
+	deps, err := t.GetApexDependencies([]string{"ApexTrigger", "ApexClass"})
 	if err != nil {
 		return []string{}, fmt.Errorf("con.GetCoverage: %w", err)
 	}
 
 	apexDeps := ParseDependencies(deps, classes, triggers)
 
-	coverages, err := con.GetCoverage(
+	coverages, err := t.GetCoverage(
 		slices.Concat(classes, triggers, apexDeps),
 	)
 	if err != nil {
@@ -90,46 +90,15 @@ type Apex struct {
 	Name         string
 	Lines        int
 	Coverage     map[string][]bool
-	linesCovered int
+	LinesCovered int
 	maxLine      int
-}
-
-func (a *Apex) GetCovLines() int {
-	if aCovLines := a.linesCovered; aCovLines != 0 {
-		return aCovLines
-	}
-	totalCov := make([]bool, a.maxLine)
-	for _, c := range a.Coverage {
-		totalCov = mergeCoverage(totalCov, c)
-	}
-
-	for _, l := range totalCov {
-		if l {
-			a.linesCovered++
-		}
-	}
-	return a.linesCovered
 }
 
 type Test struct {
 	Id           string
 	Name         string
 	Coverage     map[string][]bool
-	linesCovered int
-}
-
-func (t *Test) GetCovLines() int {
-	if tCovLines := t.linesCovered; tCovLines != 0 {
-		return tCovLines
-	}
-	for _, c := range t.Coverage {
-		for _, l := range c {
-			if l {
-				t.linesCovered++
-			}
-		}
-	}
-	return t.linesCovered
+	LinesCovered int
 }
 
 func ParseCoverage(data []sfapi.ApexCodeCoverage) (map[string]Test, map[string]Apex) {
@@ -204,6 +173,21 @@ func ParseCoverage(data []sfapi.ApexCodeCoverage) (map[string]Test, map[string]A
 		test.Coverage[apexId] = mergeCoverage(test.Coverage[apexId], cov)
 
 		testMap[testId] = test
+	}
+
+	for apexId, apex := range apexMap {
+		totalCov := make([]bool, apex.maxLine)
+		for _, c := range apex.Coverage {
+			totalCov = mergeCoverage(totalCov, c)
+		}
+
+		for _, l := range totalCov {
+			if l {
+				apex.LinesCovered++
+			}
+		}
+
+		apexMap[apexId] = apex
 	}
 
 	return testMap, apexMap
@@ -288,7 +272,7 @@ func ParseDependencies(
 		walk(id, &depIds)
 	}
 
-	res := make([]string, len(depIds))
+	res := make([]string, 0, len(depIds))
 	for _, id := range depIds {
 		node := depMap[id]
 		if node.isRoot {
@@ -323,11 +307,11 @@ func GetTestsMaxCoverage(
 	for _, apex := range apexMap {
 		linesTotal += apex.Lines
 
-		coveredLines := apex.GetCovLines()
+		coveredLines := apex.LinesCovered
 		linesCoveredTotal += coveredLines
 		for testId := range apex.Coverage {
 			test := testMap[testId]
-			res = append(res, test.Name)
+			res = appendNoDups(res, test.Name)
 		}
 
 		coverage := math.Ceil(float64(coveredLines)/float64(apex.Lines)*100) / 100
@@ -368,4 +352,17 @@ func GetTestsMaxCoverage(
 	}
 
 	return res, nil
+}
+
+func appendNoDups(ogSlice []string, item string) []string {
+	m := make(map[string]bool)
+	for _, v := range ogSlice {
+		m[v] = true
+	}
+
+	if _, ok := m[item]; !ok {
+		ogSlice = append(ogSlice, item)
+	}
+
+	return ogSlice
 }

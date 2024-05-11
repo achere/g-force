@@ -10,6 +10,12 @@ import (
 	"strings"
 )
 
+type Tooling interface {
+	GetCoverage(apexNames []string) ([]ApexCodeCoverage, error)
+	GetApexDependencies(metadataComponentTypes []string) ([]MetadataComponentDependency, error)
+	ExecuteAnonymousRest(body string) error
+}
+
 type ToolingApiObject interface {
 	ApexCodeCoverage | MetadataComponentDependency
 }
@@ -58,6 +64,49 @@ func (c *Connection) GetApexDependencies(metadataComponentTypes []string) ([]Met
 	return QueryToolingApi[MetadataComponentDependency](c, query)
 }
 
+func (c *Connection) ExecuteAnonymousRest(body string) error {
+	strippedBody := url.QueryEscape(strings.Replace(body, "\n", " ", -1))
+	url := c.BaseUrl + "/services/data/v" + c.ApiVersion + "/tooling/executeAnonymous/?anonymousBody=" + strippedBody
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return fmt.Errorf("http.NewRequest: %w", err)
+	}
+
+	respBody, err := c.makeRequest(req)
+	if err != nil {
+		return fmt.Errorf("c.makeRequest: %w", err)
+	}
+
+	var parsedResponse struct {
+		Line                int    `json:"line"`
+		Column              int    `json:"column"`
+		Compiled            bool   `json:"compiled"`
+		Success             bool   `json:"success"`
+		CompileProblem      string `json:"compileProblem"`
+		ExceptionStackTrace string `json:"exceptionStackTrace"`
+		ExceptionMessage    string `json:"exceptionMessage"`
+	}
+
+	err = json.Unmarshal(respBody, &parsedResponse)
+	if err != nil {
+		return fmt.Errorf("json.Unmarshal: %w", err)
+	}
+
+	if parsedResponse.Success {
+		return nil
+	}
+
+	if parsedResponse.Compiled {
+		msg := "error on line " +
+			strconv.Itoa(parsedResponse.Line) + ":" + strconv.Itoa(parsedResponse.Column) + " - " +
+			parsedResponse.ExceptionMessage + " " + parsedResponse.ExceptionStackTrace
+		return errors.New(msg)
+	}
+
+	return errors.New("didn't compile: " + parsedResponse.CompileProblem)
+}
+
 func QueryToolingApi[T ToolingApiObject](c *Connection, query string) ([]T, error) {
 	baseUrl := c.BaseUrl + "/services/data/v" + c.ApiVersion + "/tooling/query/?q="
 	req, err := http.NewRequest("GET", baseUrl+query, nil)
@@ -79,48 +128,4 @@ func QueryToolingApi[T ToolingApiObject](c *Connection, query string) ([]T, erro
 	}
 
 	return parsedResponse.Records, nil
-}
-
-type executeAnonymousResponse struct {
-	Line                int    `json:"line"`
-	Column              int    `json:"column"`
-	Compiled            bool   `json:"compiled"`
-	Success             bool   `json:"success"`
-	CompileProblem      string `json:"compileProblem"`
-	ExceptionStackTrace string `json:"exceptionStackTrace"`
-	ExceptionMessage    string `json:"exceptionMessage"`
-}
-
-func (c *Connection) ExecuteAnonymousRest(body string) error {
-	strippedBody := url.QueryEscape(strings.Replace(body, "\n", " ", -1))
-	url := c.BaseUrl + "/services/data/v" + c.ApiVersion + "/tooling/executeAnonymous/?anonymousBody=" + strippedBody
-
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return fmt.Errorf("http.NewRequest: %w", err)
-	}
-
-	respBody, err := c.makeRequest(req)
-	if err != nil {
-		return fmt.Errorf("c.makeRequest: %w", err)
-	}
-
-	var parsedResponse executeAnonymousResponse
-	err = json.Unmarshal(respBody, &parsedResponse)
-	if err != nil {
-		return fmt.Errorf("json.Unmarshal: %w", err)
-	}
-
-	if parsedResponse.Success {
-		return nil
-	}
-
-	if parsedResponse.Compiled {
-		msg := "error on line " +
-			strconv.Itoa(parsedResponse.Line) + ":" + strconv.Itoa(parsedResponse.Column) + " - " +
-			parsedResponse.ExceptionMessage + " " + parsedResponse.ExceptionStackTrace
-		return errors.New(msg)
-	}
-
-	return errors.New("didn't compile: " + parsedResponse.CompileProblem)
 }
