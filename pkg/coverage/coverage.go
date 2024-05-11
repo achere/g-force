@@ -4,9 +4,85 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 
 	"github.com/achere/g-force/pkg/sfapi"
 )
+
+const (
+	StratMaxCoverage         = "MaxCoverage"
+	StratMaxCoverageWithDeps = "MaxCoverageWithDependencies"
+)
+
+var strategyToGetterMap = map[string]testNamesRequester{
+	StratMaxCoverage:         RequestTestsMaxCoverage,
+	StratMaxCoverageWithDeps: RequestTestsMaxCoverageWithDeps,
+}
+
+type testNamesRequester func(sfapi.Tooling, []string, []string) ([]string, error)
+
+func RequestTestsWithStrategy(
+	strategy string,
+	t sfapi.Tooling,
+	classes []string,
+	triggers []string,
+) ([]string, error) {
+	f := strategyToGetterMap[strategy]
+
+	if f == nil {
+		return []string{}, errors.New("Unsupported strategy provided: " + strategy)
+	}
+
+	return f(t, classes, triggers)
+}
+
+func RequestTestsMaxCoverage(
+	t sfapi.Tooling,
+	classes []string,
+	triggers []string,
+) ([]string, error) {
+	coverages, err := t.GetCoverage(slices.Concat(classes, triggers))
+	if err != nil {
+		return []string{}, fmt.Errorf("con.GetCoverage: %w", err)
+	}
+
+	testMap, apexMap := ParseCoverage(coverages)
+	tests, err := GetTestsMaxCoverage(testMap, apexMap, classes, triggers)
+	if err != nil {
+		return []string{}, fmt.Errorf("GetTestsMaxCoverage: %w", err)
+	}
+
+	return tests, nil
+}
+
+func RequestTestsMaxCoverageWithDeps(
+	t sfapi.Tooling,
+	classes []string,
+	triggers []string,
+) ([]string, error) {
+	deps, err := t.GetApexDependencies([]string{"ApexTrigger", "ApexClass"})
+	if err != nil {
+		return []string{}, fmt.Errorf("con.GetCoverage: %w", err)
+	}
+
+	apexDeps := ParseDependencies(deps, classes, triggers)
+
+	coverages, err := t.GetCoverage(
+		slices.Concat(classes, triggers, apexDeps),
+	)
+	if err != nil {
+		return []string{}, fmt.Errorf("con.GetCoverage: %w", err)
+	}
+
+	testMap, apexMap := ParseCoverage(coverages)
+
+	tests, err := GetTestsMaxCoverage(testMap, apexMap, classes, triggers)
+	if err != nil {
+		return []string{}, fmt.Errorf("GetTestsMaxCoverage: %w", err)
+	}
+
+	return tests, nil
+}
 
 type Apex struct {
 	Id           string
@@ -14,65 +90,15 @@ type Apex struct {
 	Name         string
 	Lines        int
 	Coverage     map[string][]bool
-	linesCovered int
+	LinesCovered int
 	maxLine      int
-}
-
-func (a *Apex) GetCovLines() int {
-	if aCovLines := a.linesCovered; aCovLines != 0 {
-		return aCovLines
-	}
-	totalCov := make([]bool, a.maxLine)
-	for _, c := range a.Coverage {
-		totalCov = mergeCoverage(totalCov, c)
-	}
-
-	for _, l := range totalCov {
-		if l {
-			a.linesCovered++
-		}
-	}
-	return a.linesCovered
 }
 
 type Test struct {
 	Id           string
 	Name         string
 	Coverage     map[string][]bool
-	linesCovered int
-}
-
-func (t *Test) GetCovLines() int {
-	if tCovLines := t.linesCovered; tCovLines != 0 {
-		return tCovLines
-	}
-	for _, c := range t.Coverage {
-		for _, l := range c {
-			if l {
-				t.linesCovered++
-			}
-		}
-	}
-	return t.linesCovered
-}
-
-func RequestTestsMaxCoverage(
-	con *sfapi.Connection,
-	apexClasses []string,
-	apexTrigers []string,
-) ([]string, error) {
-	coverages, err := con.GetCoverage(append(apexClasses, apexTrigers...))
-	if err != nil {
-		return []string{}, fmt.Errorf("con.GetCoverage: %w", err)
-	}
-
-	testMap, apexMap := ParseCoverage(coverages)
-	tests, err := GetTestsMaxCoverage(testMap, apexMap, apexClasses, apexTrigers)
-	if err != nil {
-		return []string{}, fmt.Errorf("GetTestsMaxCoverage: %w", err)
-	}
-
-	return tests, nil
+	LinesCovered int
 }
 
 func ParseCoverage(data []sfapi.ApexCodeCoverage) (map[string]Test, map[string]Apex) {
@@ -149,6 +175,21 @@ func ParseCoverage(data []sfapi.ApexCodeCoverage) (map[string]Test, map[string]A
 		testMap[testId] = test
 	}
 
+	for apexId, apex := range apexMap {
+		totalCov := make([]bool, apex.maxLine)
+		for _, c := range apex.Coverage {
+			totalCov = mergeCoverage(totalCov, c)
+		}
+
+		for _, l := range totalCov {
+			if l {
+				apex.LinesCovered++
+			}
+		}
+
+		apexMap[apexId] = apex
+	}
+
 	return testMap, apexMap
 }
 
@@ -160,11 +201,92 @@ func mergeCoverage(cov1, cov2 []bool) []bool {
 	return res
 }
 
+func ParseDependencies(
+	mcd []sfapi.MetadataComponentDependency,
+	classes, triggers []string,
+) []string {
+	type Node struct {
+		value  Apex
+		isRoot bool
+		deps   []string
+	}
+
+	depMap := make(map[string]Node)
+	for _, d := range mcd {
+		_, ok := depMap[d.RefId]
+		if !ok {
+			apexRef := Apex{
+				Id:        d.RefId,
+				IsTrigger: d.RefType == "ApexTrigger",
+				Name:      d.RefName,
+			}
+			nodeRef := Node{value: apexRef}
+			depMap[d.RefId] = nodeRef
+		}
+
+		node, ok := depMap[d.Id]
+		if !ok {
+			isTrigger := d.Type == "ApexTrigger"
+			apex := Apex{
+				Id:        d.Id,
+				IsTrigger: isTrigger,
+				Name:      d.Name,
+			}
+			var (
+				isRootTrigger = isTrigger && slices.Contains(triggers, d.Name)
+				isRootClass   = !isTrigger && slices.Contains(classes, d.Name)
+			)
+			node = Node{
+				value:  apex,
+				isRoot: isRootTrigger || isRootClass,
+				deps:   []string{d.RefId},
+			}
+		} else {
+			node.deps = append(node.deps, d.RefId)
+		}
+		depMap[d.Id] = node
+	}
+
+	var walk func(string, *[]string)
+	walk = func(id string, seen *[]string) {
+		if slices.Contains(*seen, id) {
+			return
+		}
+		*seen = append(*seen, id)
+
+		node := depMap[id]
+		if len(node.deps) == 0 {
+			return
+		}
+
+		for _, v := range node.deps {
+			walk(v, seen)
+		}
+	}
+
+	depIds := make([]string, 0)
+	for id, node := range depMap {
+		if !node.isRoot {
+			continue
+		}
+		walk(id, &depIds)
+	}
+
+	res := make([]string, 0, len(depIds))
+	for _, id := range depIds {
+		node := depMap[id]
+		if node.isRoot {
+			continue
+		}
+		res = append(res, node.value.Name)
+	}
+	return res
+}
+
 func GetTestsMaxCoverage(
 	testMap map[string]Test,
 	apexMap map[string]Apex,
-	apexClasses []string,
-	apexTriggers []string,
+	classes, triggers []string,
 ) ([]string, error) {
 	var (
 		res             []string
@@ -174,29 +296,28 @@ func GetTestsMaxCoverage(
 		triggerCoverage = make(map[string]float64)
 	)
 
-	for _, v := range apexTriggers {
+	for _, v := range triggers {
 		triggerSet[v] = true
 	}
-	for _, v := range apexClasses {
+	for _, v := range classes {
 		classSet[v] = true
 	}
 
 	var linesTotal, linesCoveredTotal int
 	for _, apex := range apexMap {
 		linesTotal += apex.Lines
-		isTrigger := contains(apexTriggers, apex.Name)
 
-		coveredLines := apex.GetCovLines()
+		coveredLines := apex.LinesCovered
 		linesCoveredTotal += coveredLines
 		for testId := range apex.Coverage {
 			test := testMap[testId]
-			res = append(res, test.Name)
+			res = appendNoDups(res, test.Name)
 		}
 
 		coverage := math.Ceil(float64(coveredLines)/float64(apex.Lines)*100) / 100
-		if isTrigger {
+		if slices.Contains(triggers, apex.Name) {
 			triggerCoverage[apex.Name] = coverage
-		} else {
+		} else if slices.Contains(classes, apex.Name) {
 			classCoverage[apex.Name] = coverage
 		}
 	}
@@ -233,11 +354,15 @@ func GetTestsMaxCoverage(
 	return res, nil
 }
 
-func contains[T comparable](elems []T, v T) bool {
-	for _, s := range elems {
-		if v == s {
-			return true
-		}
+func appendNoDups(ogSlice []string, item string) []string {
+	m := make(map[string]bool)
+	for _, v := range ogSlice {
+		m[v] = true
 	}
-	return false
+
+	if _, ok := m[item]; !ok {
+		ogSlice = append(ogSlice, item)
+	}
+
+	return ogSlice
 }

@@ -10,8 +10,14 @@ import (
 	"strings"
 )
 
-type apexCodeCoverageResponse struct {
-	Records []ApexCodeCoverage `json:"records"`
+type Tooling interface {
+	GetCoverage(apexNames []string) ([]ApexCodeCoverage, error)
+	GetApexDependencies(metadataComponentTypes []string) ([]MetadataComponentDependency, error)
+	ExecuteAnonymousRest(body string) error
+}
+
+type ToolingApiObject interface {
+	ApexCodeCoverage | MetadataComponentDependency
 }
 
 type ApexCodeCoverage struct {
@@ -33,44 +39,29 @@ type ApexCodeCoverage struct {
 	} `json:"Coverage"`
 }
 
-type executeAnonymousResponse struct {
-	Line                int    `json:"line"`
-	Column              int    `json:"column"`
-	Compiled            bool   `json:"compiled"`
-	Success             bool   `json:"success"`
-	CompileProblem      string `json:"compileProblem"`
-	ExceptionStackTrace string `json:"exceptionStackTrace"`
-	ExceptionMessage    string `json:"exceptionMessage"`
-}
-
-type ClassCoverage struct {
-	ClassName string
+type MetadataComponentDependency struct {
+	Name    string `json:"MetadataComponentName"`
+	Id      string `json:"MetadataComponentId"`
+	Type    string `json:"MetadataComponentType"`
+	RefType string `json:"RefMetadataComponentType"`
+	RefName string `json:"RefMetadataComponentName"`
+	RefId   string `json:"RefMetadataComponentId"`
 }
 
 func (c *Connection) GetCoverage(apexNames []string) ([]ApexCodeCoverage, error) {
-	baseUrl := c.BaseUrl + "/services/data/v" + c.ApiVersion + "/tooling/query/?q="
-
 	query := "SELECT+ApexTestClass.Name,ApexTestClass.Id,TestMethodName,ApexClassOrTrigger.Name,ApexClassOrTrigger.Id,Coverage+FROM+ApexCodeCoverage+WHERE+ApexClassOrTrigger.Name+IN+('"
 	query += strings.Join(apexNames, "','")
 	query += "')"
 
-	req, err := http.NewRequest("GET", baseUrl+query, nil)
-	if err != nil {
-		return []ApexCodeCoverage{}, fmt.Errorf("http.NewRequest: %w", err)
-	}
+	return QueryToolingApi[ApexCodeCoverage](c, query)
+}
 
-	respBody, err := c.makeRequest(req)
-	if err != nil {
-		return []ApexCodeCoverage{}, fmt.Errorf("c.makeRequest: %w", err)
-	}
+func (c *Connection) GetApexDependencies(metadataComponentTypes []string) ([]MetadataComponentDependency, error) {
+	query := "SELECT+MetadataComponentName,MetadataComponentId,MetadataComponentType,RefMetadataComponentType,RefMetadataComponentName,RefMetadataComponentId+FROM+MetadataComponentDependency+WHERE+RefMetadataComponentType+IN+('ApexClass','ApexTrigger')+AND+MetadataComponentType+IN+('"
+	query += strings.Join(metadataComponentTypes, "','")
+	query += "')"
 
-	var parsedResponse apexCodeCoverageResponse
-	err = json.Unmarshal(respBody, &parsedResponse)
-	if err != nil {
-		return []ApexCodeCoverage{}, fmt.Errorf("json.Unmarshal: %w", err)
-	}
-
-	return parsedResponse.Records, nil
+	return QueryToolingApi[MetadataComponentDependency](c, query)
 }
 
 func (c *Connection) ExecuteAnonymousRest(body string) error {
@@ -87,7 +78,16 @@ func (c *Connection) ExecuteAnonymousRest(body string) error {
 		return fmt.Errorf("c.makeRequest: %w", err)
 	}
 
-	var parsedResponse executeAnonymousResponse
+	var parsedResponse struct {
+		Line                int    `json:"line"`
+		Column              int    `json:"column"`
+		Compiled            bool   `json:"compiled"`
+		Success             bool   `json:"success"`
+		CompileProblem      string `json:"compileProblem"`
+		ExceptionStackTrace string `json:"exceptionStackTrace"`
+		ExceptionMessage    string `json:"exceptionMessage"`
+	}
+
 	err = json.Unmarshal(respBody, &parsedResponse)
 	if err != nil {
 		return fmt.Errorf("json.Unmarshal: %w", err)
@@ -105,4 +105,27 @@ func (c *Connection) ExecuteAnonymousRest(body string) error {
 	}
 
 	return errors.New("didn't compile: " + parsedResponse.CompileProblem)
+}
+
+func QueryToolingApi[T ToolingApiObject](c *Connection, query string) ([]T, error) {
+	baseUrl := c.BaseUrl + "/services/data/v" + c.ApiVersion + "/tooling/query/?q="
+	req, err := http.NewRequest("GET", baseUrl+query, nil)
+	if err != nil {
+		return []T{}, fmt.Errorf("http.NewRequest: %w", err)
+	}
+
+	respBody, err := c.makeRequest(req)
+	if err != nil {
+		return []T{}, fmt.Errorf("c.makeRequest: %w", err)
+	}
+
+	var parsedResponse struct {
+		Records []T `json:"records"`
+	}
+	err = json.Unmarshal(respBody, &parsedResponse)
+	if err != nil {
+		return []T{}, fmt.Errorf("json.Unmarshal: %w", err)
+	}
+
+	return parsedResponse.Records, nil
 }
