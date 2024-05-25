@@ -11,12 +11,12 @@ import (
 
 const (
 	StratMaxCoverage         = "MaxCoverage"
-	StratMaxCoverageWithDeps = "MaxCoverageWithDependencies"
+	StratMaxCoverageWithDeps = "MaxCoverageWithDeps"
 )
 
 var strategyToGetterMap = map[string]testNamesRequester{
-	StratMaxCoverage:         RequestTestsMaxCoverage,
-	StratMaxCoverageWithDeps: RequestTestsMaxCoverageWithDeps,
+	StratMaxCoverage:         requestTestsMaxCoverage,
+	StratMaxCoverageWithDeps: requestTestsMaxCoverageWithDeps,
 }
 
 type testNamesRequester func(sfapi.Tooling, []string, []string) ([]string, error)
@@ -36,7 +36,7 @@ func RequestTestsWithStrategy(
 	return f(t, classes, triggers)
 }
 
-func RequestTestsMaxCoverage(
+func requestTestsMaxCoverage(
 	t sfapi.Tooling,
 	classes []string,
 	triggers []string,
@@ -55,7 +55,7 @@ func RequestTestsMaxCoverage(
 	return tests, nil
 }
 
-func RequestTestsMaxCoverageWithDeps(
+func requestTestsMaxCoverageWithDeps(
 	t sfapi.Tooling,
 	classes []string,
 	triggers []string,
@@ -307,18 +307,24 @@ func GetTestsMaxCoverage(
 	for _, apex := range apexMap {
 		linesTotal += apex.Lines
 
-		coveredLines := apex.LinesCovered
-		linesCoveredTotal += coveredLines
 		for testId := range apex.Coverage {
 			test := testMap[testId]
 			res = appendNoDups(res, test.Name)
 		}
 
-		coverage := math.Ceil(float64(coveredLines)/float64(apex.Lines)*100) / 100
-		if slices.Contains(triggers, apex.Name) {
-			triggerCoverage[apex.Name] = coverage
-		} else if slices.Contains(classes, apex.Name) {
-			classCoverage[apex.Name] = coverage
+		var (
+			isTrigger = slices.Contains(triggers, apex.Name)
+			isClass   = slices.Contains(classes, apex.Name)
+		)
+		if isTrigger || isClass {
+			coveredLines := apex.LinesCovered
+			linesCoveredTotal += coveredLines
+			coverage := math.Ceil(float64(coveredLines)/float64(apex.Lines)*100) / 100
+			if isTrigger {
+				triggerCoverage[apex.Name] = coverage
+			} else if isClass {
+				classCoverage[apex.Name] = coverage
+			}
 		}
 	}
 

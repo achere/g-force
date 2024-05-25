@@ -21,22 +21,27 @@ type ToolingApiObject interface {
 }
 
 type ApexCodeCoverage struct {
-	ApexTestClass struct {
-		Name string `json:"Name"`
-		Id   string `json:"Id"`
-	} `json:"ApexTestClass"`
-	TestMethodName     string `json:"TestMethodName"`
-	ApexClassOrTrigger struct {
-		Attributes struct {
-			Type string `json:"type"`
-		} `json:"attributes"`
-		Name string `json:"Name"`
-		Id   string `json:"Id"`
-	} `json:"ApexClassOrTrigger"`
-	Coverage struct {
-		CoveredLines   []int `json:"coveredLines"`
-		UncoveredLines []int `json:"uncoveredLines"`
-	} `json:"Coverage"`
+	ApexTestClass      ApexTestClass      `json:"ApexTestClass"`
+	ApexClassOrTrigger ApexClassOrTrigger `json:"ApexClassOrTrigger"`
+	Coverage           Coverage           `json:"Coverage"`
+}
+
+type ApexTestClass struct {
+	Name string `json:"Name"`
+	Id   string `json:"Id"`
+}
+
+type ApexClassOrTrigger struct {
+	Attributes struct {
+		Type string `json:"type"`
+	} `json:"attributes"`
+	Name string `json:"Name"`
+	Id   string `json:"Id"`
+}
+
+type Coverage struct {
+	CoveredLines   []int `json:"coveredLines"`
+	UncoveredLines []int `json:"uncoveredLines"`
 }
 
 type MetadataComponentDependency struct {
@@ -49,7 +54,7 @@ type MetadataComponentDependency struct {
 }
 
 func (c *Connection) GetCoverage(apexNames []string) ([]ApexCodeCoverage, error) {
-	query := "SELECT+ApexTestClass.Name,ApexTestClass.Id,TestMethodName,ApexClassOrTrigger.Name,ApexClassOrTrigger.Id,Coverage+FROM+ApexCodeCoverage+WHERE+ApexClassOrTrigger.Name+IN+('"
+	query := "SELECT+ApexTestClass.Name,ApexTestClass.Id,ApexClassOrTrigger.Name,ApexClassOrTrigger.Id,Coverage+FROM+ApexCodeCoverage+WHERE+ApexClassOrTrigger.Name+IN+('"
 	query += strings.Join(apexNames, "','")
 	query += "')"
 
