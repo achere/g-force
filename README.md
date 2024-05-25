@@ -22,7 +22,12 @@ apexcov [-strategy=<value>] [-config=<value>] [-packages=<value>]
 
 ### Installation
 
-The recommended way is to download and decompress an executable from the latest [release](https://github.com/achere/g-force/releases) rather than installing it with `go install`.
+The recommended way is to download and decompress an executable from the latest [release](https://github.com/achere/g-force/releases) directly within your CI/CD pipeline.
+
+Alternatively, can be [installed](https://go.dev/ref/mod#go-install) on a system with pre-installed Go with the following command:
+```sh
+go install github.com/achere/g-force/cmd/apexcov@latest
+```
 
 ### Usage
 
@@ -37,22 +42,21 @@ Currently, the connection supports only the [Client Credentials Flow](https://he
 {
     "apiVersion":   "60.0",
     "baseUrl":      "https://your-domain.my.salesforce.com",
-    "clientId":     "CONSUMER_KEY",
-    "clientSecret": "CONSUMER_SECRET",
+    "clientId":     "<CONSUMER_KEY>",
+    "clientSecret": "<CONSUMER_SECRET>",
 }
 
 ```
 
 Tests can be provided using different strategies by passing an appropriate value to the `-strategy` flag:
 
-`MaxCoverage` Maximum coverage
-: Outputs all the tests that cover the provided Apex classes and triggers contained in the passed package.xml files
+- `MaxCoverage`: maximum coverage  
+Outputs all the tests that cover the provided Apex classes and triggers contained in the passed package.xml files
 
-`MaxCoverageWithDeps` Maximum coverage with dependencies
-: First calls the Salesforce Metadata Dependency API to collect all Apex classes the classes and triggers in the package.xml files depend on, then request and parse code coverage for both initial classes and their dependencies. Code coverage requirements are skipped for the dependencies as they are not mandatory for the deployment.
+- `MaxCoverageWithDeps`: maximum coverage with dependencies  
+First calls the Salesforce Metadata Dependency API to collect all Apex classes the classes and triggers in the package.xml files depend on, then request and parse code coverage for both initial classes and their dependencies. Code coverage requirements are skipped for the dependencies as they are not mandatory for the deployment.
 
 ### Related
 
 A [package](https://github.com/achere/g-force-sf) that, when installed in an org, can be connected to Gitlab to create a config.json file with authentication information for that org as a CI/CD variable.
-
 
