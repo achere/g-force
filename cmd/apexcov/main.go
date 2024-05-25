@@ -24,19 +24,19 @@ func main() {
 	configArg := flag.String(
 		"config",
 		"config.json",
-		"Path to SF org authorisation information - config.json",
+		"Path to SF org authentication information - config.json",
 	)
 	packagesArg := flag.String(
 		"packages",
 		"package.xml",
-		"Comma-separated list of paths to deployment artifacts - package.xml",
+		"Comma-separated list of paths to manifest files - package.xml",
 	)
 	strategyArg := flag.String(
 		"strategy",
 		"MaxCoverage",
 		`Choose the strategy of getting coverage:
 	- "MaxCoverage" to ouput all tests that provide coverage for the passed in Apex
-	- "MaxCoverageWithDependencies" to output all tests for the passed in Apex and its dependencies`,
+	- "MaxCoverageWithDeps" to output all tests for the passed in Apex and its dependencies`,
 	)
 
 	flag.Parse()
@@ -47,7 +47,7 @@ func main() {
 			os.Stderr,
 			`unsupported strategy provided: %v; list of supported values: 
 	- MaxCoverage
-	- MaxCoverageWithDependencies
+	- MaxCoverageWithDeps
 `,
 			*strategyArg,
 		)
