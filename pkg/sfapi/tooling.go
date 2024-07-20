@@ -11,27 +11,28 @@ import (
 )
 
 type Tooling interface {
-	GetCoverage(apexNames []string) ([]ApexCodeCoverage, error)
-	GetApexDependencies(metadataComponentTypes []string) ([]MetadataComponentDependency, error)
+	RequestCoverage(apexNames []string) ([]ApexCodeCoverage, error)
+	RequestApexDependencies(metadataComponentTypes []string) ([]MetadataComponentDependency, error)
+	RequestApexClasses(names []string) ([]ApexClass, error)
 	ExecuteAnonymousRest(body string) error
 }
 
 type ToolingApiObject interface {
-	ApexCodeCoverage | MetadataComponentDependency
+	ApexCodeCoverage | MetadataComponentDependency | ApexClass
 }
 
 type ApexCodeCoverage struct {
-	ApexTestClass      ApexTestClass      `json:"ApexTestClass"`
-	ApexClassOrTrigger ApexClassOrTrigger `json:"ApexClassOrTrigger"`
-	Coverage           Coverage           `json:"Coverage"`
+	ApexTestClass      ApexCodeCoverage_ApexTestClass      `json:"ApexTestClass"`
+	ApexClassOrTrigger ApexCodeCoverage_ApexClassOrTrigger `json:"ApexClassOrTrigger"`
+	Coverage           ApexCodeCoverage_Coverage           `json:"Coverage"`
 }
 
-type ApexTestClass struct {
+type ApexCodeCoverage_ApexTestClass struct {
 	Name string `json:"Name"`
 	Id   string `json:"Id"`
 }
 
-type ApexClassOrTrigger struct {
+type ApexCodeCoverage_ApexClassOrTrigger struct {
 	Attributes struct {
 		Type string `json:"type"`
 	} `json:"attributes"`
@@ -39,9 +40,26 @@ type ApexClassOrTrigger struct {
 	Id   string `json:"Id"`
 }
 
-type Coverage struct {
+type ApexCodeCoverage_Coverage struct {
 	CoveredLines   []int `json:"coveredLines"`
 	UncoveredLines []int `json:"uncoveredLines"`
+}
+
+type ApexClass struct {
+	Id          string                `json:"Id"`
+	Name        string                `json:"Name"`
+	IsValid     string                `json:"IsValid"`
+	Body        string                `json:"Body"`
+	SymbolTable ApexClass_SymbolTable `json:"SymbolTable"`
+}
+
+type ApexClass_SymbolTable struct {
+	TableDeclaration struct {
+		Annotations []struct {
+			Name string `json:"name"`
+		} `json:"annotations"`
+		Modifiers []string `json:"modifiers"`
+	} `json:"tableDeclaration"`
 }
 
 type MetadataComponentDependency struct {
@@ -53,7 +71,7 @@ type MetadataComponentDependency struct {
 	RefId   string `json:"RefMetadataComponentId"`
 }
 
-func (c *Connection) GetCoverage(apexNames []string) ([]ApexCodeCoverage, error) {
+func (c *Connection) RequestCoverage(apexNames []string) ([]ApexCodeCoverage, error) {
 	query := "SELECT+ApexTestClass.Name,ApexTestClass.Id,ApexClassOrTrigger.Name,ApexClassOrTrigger.Id,Coverage+FROM+ApexCodeCoverage+WHERE+ApexClassOrTrigger.Name+IN+('"
 	query += strings.Join(apexNames, "','")
 	query += "')"
@@ -61,12 +79,20 @@ func (c *Connection) GetCoverage(apexNames []string) ([]ApexCodeCoverage, error)
 	return QueryToolingApi[ApexCodeCoverage](c, query)
 }
 
-func (c *Connection) GetApexDependencies(metadataComponentTypes []string) ([]MetadataComponentDependency, error) {
+func (c *Connection) RequestApexDependencies(metadataComponentTypes []string) ([]MetadataComponentDependency, error) {
 	query := "SELECT+MetadataComponentName,MetadataComponentId,MetadataComponentType,RefMetadataComponentType,RefMetadataComponentName,RefMetadataComponentId+FROM+MetadataComponentDependency+WHERE+RefMetadataComponentType+IN+('ApexClass','ApexTrigger')+AND+MetadataComponentType+IN+('"
 	query += strings.Join(metadataComponentTypes, "','")
 	query += "')"
 
 	return QueryToolingApi[MetadataComponentDependency](c, query)
+}
+
+func (c *Connection) RequestApexClasses(names []string) ([]ApexClass, error) {
+	query := "SELECT+Id,Name,SymbolTable+FROM+ApexClass+WHERE+Name+IN+('"
+	query += strings.Join(names, "','")
+	query += "')"
+
+	return QueryToolingApi[ApexClass](c, query)
 }
 
 func (c *Connection) ExecuteAnonymousRest(body string) error {
