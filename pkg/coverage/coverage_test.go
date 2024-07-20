@@ -11,84 +11,86 @@ import (
 func TestRequestTestsMaxCoverage(t *testing.T) {
 	goodCov := []sfapi.ApexCodeCoverage{
 		{
-			ApexTestClass: sfapi.ApexTestClass{Id: "test1", Name: "Class1_Test"},
-			ApexClassOrTrigger: sfapi.ApexClassOrTrigger{
+			ApexTestClass: sfapi.ApexCodeCoverage_ApexTestClass{Id: "test1", Name: "Class1_Test"},
+			ApexClassOrTrigger: sfapi.ApexCodeCoverage_ApexClassOrTrigger{
 				Attributes: struct {
 					Type string `json:"type"`
 				}{Type: "ApexClass"},
 				Name: "Class1",
 				Id:   "class1",
 			},
-			Coverage: sfapi.Coverage{CoveredLines: []int{1, 2}, UncoveredLines: []int{3, 5, 8, 13, 21, 34, 55, 89}},
+			Coverage: sfapi.ApexCodeCoverage_Coverage{CoveredLines: []int{1, 2}, UncoveredLines: []int{3, 5, 8, 13, 21, 34, 55, 89}},
 		},
 		{
-			ApexTestClass: sfapi.ApexTestClass{Id: "test2", Name: "Trigger1_Test"},
-			ApexClassOrTrigger: sfapi.ApexClassOrTrigger{
+			ApexTestClass: sfapi.ApexCodeCoverage_ApexTestClass{Id: "test2", Name: "Trigger1_Test"},
+			ApexClassOrTrigger: sfapi.ApexCodeCoverage_ApexClassOrTrigger{
 				Attributes: struct {
 					Type string `json:"type"`
 				}{Type: "ApexTrigger"},
 				Name: "Trigger1",
 				Id:   "trigger1",
 			},
-			Coverage: sfapi.Coverage{CoveredLines: []int{1, 2, 8, 13, 21, 34, 55, 89}, UncoveredLines: []int{3, 5}},
+			Coverage: sfapi.ApexCodeCoverage_Coverage{CoveredLines: []int{1, 2, 8, 13, 21, 34, 55, 89}, UncoveredLines: []int{3, 5}},
 		},
 		{
-			ApexTestClass: sfapi.ApexTestClass{Id: "test2", Name: "Trigger1_Test"},
-			ApexClassOrTrigger: sfapi.ApexClassOrTrigger{
+			ApexTestClass: sfapi.ApexCodeCoverage_ApexTestClass{Id: "test2", Name: "Trigger1_Test"},
+			ApexClassOrTrigger: sfapi.ApexCodeCoverage_ApexClassOrTrigger{
 				Attributes: struct {
 					Type string `json:"type"`
 				}{Type: "ApexClass"},
 				Name: "Class1",
 				Id:   "class1",
 			},
-			Coverage: sfapi.Coverage{CoveredLines: []int{8, 13, 21, 34, 55, 89}, UncoveredLines: []int{1, 2, 3, 5}},
+			Coverage: sfapi.ApexCodeCoverage_Coverage{CoveredLines: []int{8, 13, 21, 34, 55, 89}, UncoveredLines: []int{1, 2, 3, 5}},
 		},
 	}
 
 	missClass := []sfapi.ApexCodeCoverage{
 		{
-			ApexTestClass: sfapi.ApexTestClass{Id: "test2", Name: "Trigger1_Test"},
-			ApexClassOrTrigger: sfapi.ApexClassOrTrigger{
+			ApexTestClass: sfapi.ApexCodeCoverage_ApexTestClass{Id: "test2", Name: "Trigger1_Test"},
+			ApexClassOrTrigger: sfapi.ApexCodeCoverage_ApexClassOrTrigger{
 				Attributes: struct {
 					Type string `json:"type"`
 				}{Type: "ApexTrigger"},
 				Name: "Trigger1",
 				Id:   "trigger1",
 			},
-			Coverage: sfapi.Coverage{CoveredLines: []int{1, 2, 8, 13, 21, 34, 55, 89}, UncoveredLines: []int{3, 5}},
+			Coverage: sfapi.ApexCodeCoverage_Coverage{CoveredLines: []int{1, 2, 8, 13, 21, 34, 55, 89}, UncoveredLines: []int{3, 5}},
 		},
 	}
 
 	insuffCov := []sfapi.ApexCodeCoverage{
 		{
-			ApexTestClass: sfapi.ApexTestClass{Id: "test1", Name: "Class1_Test"},
-			ApexClassOrTrigger: sfapi.ApexClassOrTrigger{
+			ApexTestClass: sfapi.ApexCodeCoverage_ApexTestClass{Id: "test1", Name: "Class1_Test"},
+			ApexClassOrTrigger: sfapi.ApexCodeCoverage_ApexClassOrTrigger{
 				Attributes: struct {
 					Type string `json:"type"`
 				}{Type: "ApexClass"},
 				Name: "Class1",
 				Id:   "class1",
 			},
-			Coverage: sfapi.Coverage{CoveredLines: []int{1, 2}, UncoveredLines: []int{3, 5, 8, 13, 21, 34, 55, 89}},
+			Coverage: sfapi.ApexCodeCoverage_Coverage{CoveredLines: []int{1, 2}, UncoveredLines: []int{3, 5, 8, 13, 21, 34, 55, 89}},
 		},
 		{
-			ApexTestClass: sfapi.ApexTestClass{Id: "test2", Name: "Trigger1_Test"},
-			ApexClassOrTrigger: sfapi.ApexClassOrTrigger{
+			ApexTestClass: sfapi.ApexCodeCoverage_ApexTestClass{Id: "test2", Name: "Trigger1_Test"},
+			ApexClassOrTrigger: sfapi.ApexCodeCoverage_ApexClassOrTrigger{
 				Attributes: struct {
 					Type string `json:"type"`
 				}{Type: "ApexTrigger"},
 				Name: "Trigger1",
 				Id:   "trigger1",
 			},
-			Coverage: sfapi.Coverage{CoveredLines: []int{1, 2, 8, 13, 21, 34, 55, 89}, UncoveredLines: []int{3, 5}},
+			Coverage: sfapi.ApexCodeCoverage_Coverage{CoveredLines: []int{1, 2, 8, 13, 21, 34, 55, 89}, UncoveredLines: []int{3, 5}},
 		},
 	}
 
+	requestEmptyApexClasses := func(s []string) ([]sfapi.ApexClass, error) { return []sfapi.ApexClass{}, nil }
+
 	data := []struct {
-		name        string
-		getCoverage func([]string) ([]sfapi.ApexCodeCoverage, error)
-		tests       []string
-		mustErr     bool
+		name            string
+		requestCoverage func([]string) ([]sfapi.ApexCodeCoverage, error)
+		tests           []string
+		mustErr         bool
 	}{
 		{
 			"success",
@@ -112,7 +114,7 @@ func TestRequestTestsMaxCoverage(t *testing.T) {
 
 	for _, d := range data {
 		t.Run(d.name, func(t *testing.T) {
-			ts := ToolingStub{getCoverage: d.getCoverage}
+			ts := ToolingStub{requestCoverage: d.requestCoverage, requestApexClasses: requestEmptyApexClasses}
 
 			tests, err := RequestTestsWithStrategy(StratMaxCoverage, ts, []string{"Class1"}, []string{"Trigger1"})
 
@@ -128,7 +130,7 @@ func TestRequestTestsMaxCoverage(t *testing.T) {
 }
 
 func TestRequestMaxCoverageWithDeps(t *testing.T) {
-	getApexDependencies := func(metadataComponentTypes []string) ([]sfapi.MetadataComponentDependency, error) {
+	requestApexDependencies := func(metadataComponentTypes []string) ([]sfapi.MetadataComponentDependency, error) {
 		return []sfapi.MetadataComponentDependency{
 			{
 				Name:    "Trigger1",
@@ -156,48 +158,49 @@ func TestRequestMaxCoverageWithDeps(t *testing.T) {
 			},
 		}, nil
 	}
+	requestApexClasses := func(s []string) ([]sfapi.ApexClass, error) { return []sfapi.ApexClass{}, nil }
 
 	goodCov := []sfapi.ApexCodeCoverage{
 		{
-			ApexTestClass: sfapi.ApexTestClass{Id: "test1", Name: "Class1_Test"},
-			ApexClassOrTrigger: sfapi.ApexClassOrTrigger{
+			ApexTestClass: sfapi.ApexCodeCoverage_ApexTestClass{Id: "test1", Name: "Class1_Test"},
+			ApexClassOrTrigger: sfapi.ApexCodeCoverage_ApexClassOrTrigger{
 				Attributes: struct {
 					Type string `json:"type"`
 				}{Type: "ApexClass"},
 				Name: "Class1",
 				Id:   "class1",
 			},
-			Coverage: sfapi.Coverage{CoveredLines: []int{1, 2}, UncoveredLines: []int{3, 5, 8, 13, 21, 34, 55, 89}},
+			Coverage: sfapi.ApexCodeCoverage_Coverage{CoveredLines: []int{1, 2}, UncoveredLines: []int{3, 5, 8, 13, 21, 34, 55, 89}},
 		},
 		{
-			ApexTestClass: sfapi.ApexTestClass{Id: "test2", Name: "Trigger1_Test"},
-			ApexClassOrTrigger: sfapi.ApexClassOrTrigger{
+			ApexTestClass: sfapi.ApexCodeCoverage_ApexTestClass{Id: "test2", Name: "Trigger1_Test"},
+			ApexClassOrTrigger: sfapi.ApexCodeCoverage_ApexClassOrTrigger{
 				Attributes: struct {
 					Type string `json:"type"`
 				}{Type: "ApexTrigger"},
 				Name: "Trigger1",
 				Id:   "trigger1",
 			},
-			Coverage: sfapi.Coverage{CoveredLines: []int{1, 2, 8, 13, 21, 34, 55, 89}, UncoveredLines: []int{3, 5}},
+			Coverage: sfapi.ApexCodeCoverage_Coverage{CoveredLines: []int{1, 2, 8, 13, 21, 34, 55, 89}, UncoveredLines: []int{3, 5}},
 		},
 		{
-			ApexTestClass: sfapi.ApexTestClass{Id: "test2", Name: "Trigger1_Test"},
-			ApexClassOrTrigger: sfapi.ApexClassOrTrigger{
+			ApexTestClass: sfapi.ApexCodeCoverage_ApexTestClass{Id: "test2", Name: "Trigger1_Test"},
+			ApexClassOrTrigger: sfapi.ApexCodeCoverage_ApexClassOrTrigger{
 				Attributes: struct {
 					Type string `json:"type"`
 				}{Type: "ApexClass"},
 				Name: "Class1",
 				Id:   "class1",
 			},
-			Coverage: sfapi.Coverage{CoveredLines: []int{8, 13, 21, 34, 55, 89}, UncoveredLines: []int{1, 2, 3, 5}},
+			Coverage: sfapi.ApexCodeCoverage_Coverage{CoveredLines: []int{8, 13, 21, 34, 55, 89}, UncoveredLines: []int{1, 2, 3, 5}},
 		},
 	}
 
 	data := []struct {
-		name        string
-		getCoverage func([]string) ([]sfapi.ApexCodeCoverage, error)
-		tests       []string
-		mustErr     bool
+		name            string
+		requestCoverage func([]string) ([]sfapi.ApexCodeCoverage, error)
+		tests           []string
+		mustErr         bool
 	}{
 		{
 			"success",
@@ -214,7 +217,11 @@ func TestRequestMaxCoverageWithDeps(t *testing.T) {
 
 	for _, d := range data {
 		t.Run(d.name, func(t *testing.T) {
-			ts := ToolingStub{getCoverage: d.getCoverage, getApexDependencies: getApexDependencies}
+			ts := ToolingStub{
+				requestCoverage:         d.requestCoverage,
+				requestApexDependencies: requestApexDependencies,
+				requestApexClasses:      requestApexClasses,
+			}
 
 			tests, err := RequestTestsWithStrategy(StratMaxCoverageWithDeps, ts, []string{}, []string{"Trigger1"})
 
@@ -234,17 +241,22 @@ func slicesEqualIgnoreOrder(s1, s2 []string) bool {
 }
 
 type ToolingStub struct {
-	getCoverage          func([]string) ([]sfapi.ApexCodeCoverage, error)
-	getApexDependencies  func([]string) ([]sfapi.MetadataComponentDependency, error)
-	executeAnonymousRest func(string) error
+	requestCoverage         func([]string) ([]sfapi.ApexCodeCoverage, error)
+	requestApexDependencies func([]string) ([]sfapi.MetadataComponentDependency, error)
+	requestApexClasses      func([]string) ([]sfapi.ApexClass, error)
+	executeAnonymousRest    func(string) error
 }
 
-func (ts ToolingStub) GetCoverage(apexNames []string) ([]sfapi.ApexCodeCoverage, error) {
-	return ts.getCoverage(apexNames)
+func (ts ToolingStub) RequestCoverage(apexNames []string) ([]sfapi.ApexCodeCoverage, error) {
+	return ts.requestCoverage(apexNames)
 }
 
-func (ts ToolingStub) GetApexDependencies(metadataComponentTypes []string) ([]sfapi.MetadataComponentDependency, error) {
-	return ts.getApexDependencies(metadataComponentTypes)
+func (ts ToolingStub) RequestApexDependencies(metadataComponentTypes []string) ([]sfapi.MetadataComponentDependency, error) {
+	return ts.requestApexDependencies(metadataComponentTypes)
+}
+
+func (ts ToolingStub) RequestApexClasses(names []string) ([]sfapi.ApexClass, error) {
+	return ts.requestApexClasses(names)
 }
 
 func (ts ToolingStub) ExecuteAnonymousRest(body string) error {
