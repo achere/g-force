@@ -6,7 +6,7 @@ A set of utilities that interact with the Salesforce.com API
 apexcov
 -------
 
-A CLI tool that can be used in CI/CD pipelines with Salesforce.
+A CLI tool that can be used in CI/CD pipelines with Salesforce to generate list of test classes sufficient for a given deployment.
 
 ```
 apexcov [-strategy=<value>] [-config=<value>] [-packages=<value>]
@@ -36,7 +36,7 @@ This list can then be passed to an [`sf project deploy start -l RunSpecifiedTest
 Since you can also have [destructive changes separately](https://developer.salesforce.com/docs/atlas.en-us.api_meta.meta/api_meta/meta_deploy_deleting_files.htm), `apexcov` supports parsing multiple .xml files. Provide a comma-separated list of paths to .xml files via the `-packages` flag.
 
 The tool connects to an org that must have the coverage information for the metadata specified in the package.xml file which requires the tests to be run prior to `apexcov`.
-In case of insufficient coverage (less than 75% for all code to be deployed or any individual class or trigger), `apexcov` will exit with code 1 and will print the error to the stderr.
+In case of insufficient coverage (less than 75% for all code being deployed or for any individual class or trigger), `apexcov` will exit with code 1 and will print the error to the stderr.
 Currently, the connection supports only the [Client Credentials Flow](https://help.salesforce.com/s/articleView?id=sf.remoteaccess_oauth_client_credentials_flow.htm&type=5) so you have to have the Connected App set up with [appropriate settings](https://help.salesforce.com/s/articleView?id=sf.connected_app_client_credentials_setup.htm&type=5). Provide the authentication information as a path to a JSON file with the following fields via the `-config` flag:
 ```json
 {
