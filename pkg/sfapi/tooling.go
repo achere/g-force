@@ -10,14 +10,7 @@ import (
 	"strings"
 )
 
-type Tooling interface {
-	RequestCoverage(apexNames []string) ([]ApexCodeCoverage, error)
-	RequestApexDependencies(metadataComponentTypes []string) ([]MetadataComponentDependency, error)
-	RequestApexClasses(names []string) ([]ApexClass, error)
-	ExecuteAnonymousRest(body string) error
-}
-
-type ToolingApiObject interface {
+type toolingApiObject interface {
 	ApexCodeCoverage | MetadataComponentDependency | ApexClass
 }
 
@@ -76,7 +69,7 @@ func (c *Connection) RequestCoverage(apexNames []string) ([]ApexCodeCoverage, er
 	query += strings.Join(apexNames, "','")
 	query += "')"
 
-	return QueryToolingApi[ApexCodeCoverage](c, query)
+	return queryToolingApi[ApexCodeCoverage](c, query)
 }
 
 func (c *Connection) RequestApexDependencies(metadataComponentTypes []string) ([]MetadataComponentDependency, error) {
@@ -84,7 +77,7 @@ func (c *Connection) RequestApexDependencies(metadataComponentTypes []string) ([
 	query += strings.Join(metadataComponentTypes, "','")
 	query += "')"
 
-	return QueryToolingApi[MetadataComponentDependency](c, query)
+	return queryToolingApi[MetadataComponentDependency](c, query)
 }
 
 func (c *Connection) RequestApexClasses(names []string) ([]ApexClass, error) {
@@ -92,7 +85,7 @@ func (c *Connection) RequestApexClasses(names []string) ([]ApexClass, error) {
 	query += strings.Join(names, "','")
 	query += "')"
 
-	return QueryToolingApi[ApexClass](c, query)
+	return queryToolingApi[ApexClass](c, query)
 }
 
 func (c *Connection) ExecuteAnonymousRest(body string) error {
@@ -138,7 +131,7 @@ func (c *Connection) ExecuteAnonymousRest(body string) error {
 	return errors.New("didn't compile: " + parsedResponse.CompileProblem)
 }
 
-func QueryToolingApi[T ToolingApiObject](c *Connection, query string) ([]T, error) {
+func queryToolingApi[T toolingApiObject](c *Connection, query string) ([]T, error) {
 	baseUrl := c.BaseUrl + "/services/data/v" + c.ApiVersion + "/tooling/query/?q="
 	req, err := http.NewRequest("GET", baseUrl+query, nil)
 	if err != nil {

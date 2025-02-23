@@ -114,7 +114,7 @@ func TestRequestTestsMaxCoverage(t *testing.T) {
 
 	for _, d := range data {
 		t.Run(d.name, func(t *testing.T) {
-			ts := ToolingStub{requestCoverage: d.requestCoverage, requestApexClasses: requestEmptyApexClasses}
+			ts := RequesterStub{requestCoverage: d.requestCoverage, requestApexClasses: requestEmptyApexClasses}
 
 			tests, err := RequestTestsWithStrategy(StratMaxCoverage, ts, []string{"Class1"}, []string{"Trigger1"})
 
@@ -217,7 +217,7 @@ func TestRequestMaxCoverageWithDeps(t *testing.T) {
 
 	for _, d := range data {
 		t.Run(d.name, func(t *testing.T) {
-			ts := ToolingStub{
+			ts := RequesterStub{
 				requestCoverage:         d.requestCoverage,
 				requestApexDependencies: requestApexDependencies,
 				requestApexClasses:      requestApexClasses,
@@ -240,25 +240,20 @@ func slicesEqualIgnoreOrder(s1, s2 []string) bool {
 	return cmp.Equal(s1, s2, cmpopts.SortSlices(func(e1, e2 string) bool { return e1 < e2 }))
 }
 
-type ToolingStub struct {
+type RequesterStub struct {
 	requestCoverage         func([]string) ([]sfapi.ApexCodeCoverage, error)
 	requestApexDependencies func([]string) ([]sfapi.MetadataComponentDependency, error)
 	requestApexClasses      func([]string) ([]sfapi.ApexClass, error)
-	executeAnonymousRest    func(string) error
 }
 
-func (ts ToolingStub) RequestCoverage(apexNames []string) ([]sfapi.ApexCodeCoverage, error) {
+func (ts RequesterStub) RequestCoverage(apexNames []string) ([]sfapi.ApexCodeCoverage, error) {
 	return ts.requestCoverage(apexNames)
 }
 
-func (ts ToolingStub) RequestApexDependencies(metadataComponentTypes []string) ([]sfapi.MetadataComponentDependency, error) {
+func (ts RequesterStub) RequestApexDependencies(metadataComponentTypes []string) ([]sfapi.MetadataComponentDependency, error) {
 	return ts.requestApexDependencies(metadataComponentTypes)
 }
 
-func (ts ToolingStub) RequestApexClasses(names []string) ([]sfapi.ApexClass, error) {
+func (ts RequesterStub) RequestApexClasses(names []string) ([]sfapi.ApexClass, error) {
 	return ts.requestApexClasses(names)
-}
-
-func (ts ToolingStub) ExecuteAnonymousRest(body string) error {
-	return ts.executeAnonymousRest(body)
 }

@@ -19,11 +19,21 @@ var strategyToGetterMap = map[string]testNamesRequester{
 	StratMaxCoverageWithDeps: requestTestsMaxCoverageWithDeps,
 }
 
-type testNamesRequester func(sfapi.Tooling, []string, []string) ([]string, error)
+type testNamesRequester func(coverageDependenciesRequester, []string, []string) ([]string, error)
+
+type coverageDependenciesRequester interface {
+	apexCoverageRequester
+	RequestApexDependencies(metadataComponentTypes []string) ([]sfapi.MetadataComponentDependency, error)
+}
+
+type apexCoverageRequester interface {
+	RequestCoverage(apexNames []string) ([]sfapi.ApexCodeCoverage, error)
+	RequestApexClasses(names []string) ([]sfapi.ApexClass, error)
+}
 
 func RequestTestsWithStrategy(
 	strategy string,
-	t sfapi.Tooling,
+	c coverageDependenciesRequester,
 	classes []string,
 	triggers []string,
 ) ([]string, error) {
@@ -33,15 +43,15 @@ func RequestTestsWithStrategy(
 		return []string{}, errors.New("Unsupported strategy provided: " + strategy)
 	}
 
-	return f(t, classes, triggers)
+	return f(c, classes, triggers)
 }
 
 func requestTestsMaxCoverage(
-	t sfapi.Tooling,
+	c coverageDependenciesRequester,
 	classes []string,
 	triggers []string,
 ) ([]string, error) {
-	testMap, apexMap, tests, err := requestAndParseCoverage(t, slices.Concat(classes, triggers), classes)
+	testMap, apexMap, tests, err := requestAndParseCoverage(c, slices.Concat(classes, triggers), classes)
 	if err != nil {
 		return []string{}, fmt.Errorf("requestAndParseCoverage: %w", err)
 	}
@@ -55,18 +65,18 @@ func requestTestsMaxCoverage(
 }
 
 func requestTestsMaxCoverageWithDeps(
-	t sfapi.Tooling,
+	c coverageDependenciesRequester,
 	classes []string,
 	triggers []string,
 ) ([]string, error) {
-	deps, err := t.RequestApexDependencies([]string{"ApexTrigger", "ApexClass"})
+	deps, err := c.RequestApexDependencies([]string{"ApexTrigger", "ApexClass"})
 	if err != nil {
 		return []string{}, fmt.Errorf("t.RequestApexDependencies: %w", err)
 	}
 	apexDeps := ParseDependencies(deps, classes, triggers)
 
 	testMap, apexMap, tests, err := requestAndParseCoverage(
-		t,
+		c,
 		slices.Concat(classes, triggers, apexDeps),
 		classes,
 	)
@@ -83,7 +93,7 @@ func requestTestsMaxCoverageWithDeps(
 }
 
 func requestAndParseCoverage(
-	t sfapi.Tooling,
+	c apexCoverageRequester,
 	apex []string,
 	classes []string,
 ) (map[string]Test, map[string]Apex, []string, error) {
@@ -96,7 +106,7 @@ func requestAndParseCoverage(
 
 	go func() {
 		defer close(chCov)
-		coverages, err := t.RequestCoverage(apex)
+		coverages, err := c.RequestCoverage(apex)
 		if err != nil {
 			chErr <- fmt.Errorf("t.RequestCoverage: %w", err)
 		} else {
@@ -106,7 +116,7 @@ func requestAndParseCoverage(
 
 	go func() {
 		defer close(chCls)
-		apiClasses, err := t.RequestApexClasses(classes)
+		apiClasses, err := c.RequestApexClasses(classes)
 		if err != nil {
 			chErr <- fmt.Errorf("t.RequestApexClasses: %w", err)
 		} else {
@@ -119,20 +129,21 @@ func requestAndParseCoverage(
 		apiClasses []sfapi.ApexClass
 	)
 
-loop:
-	for {
+	for coverages == nil || apiClasses == nil {
 		select {
 		case err := <-chErr:
 			return map[string]Test{}, map[string]Apex{}, []string{}, err
-		case cov := <-chCov:
-			coverages = append(coverages, cov...)
-			if apiClasses != nil {
-				break loop
+		case cov, ok := <-chCov:
+			if ok {
+				coverages = cov
+			} else {
+				chCov = nil
 			}
-		case apiCls := <-chCls:
-			apiClasses = append(apiClasses, apiCls...)
-			if coverages != nil {
-				break loop
+		case apiCls, ok := <-chCls:
+			if ok {
+				apiClasses = apiCls
+			} else {
+				chCls = nil
 			}
 		}
 	}
