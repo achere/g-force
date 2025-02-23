@@ -1,6 +1,7 @@
 package sfapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -64,31 +65,31 @@ type MetadataComponentDependency struct {
 	RefId   string `json:"RefMetadataComponentId"`
 }
 
-func (c *Connection) RequestCoverage(apexNames []string) ([]ApexCodeCoverage, error) {
+func (c *Connection) RequestCoverage(ctx context.Context, apexNames []string) ([]ApexCodeCoverage, error) {
 	query := "SELECT+ApexTestClass.Name,ApexTestClass.Id,ApexClassOrTrigger.Name,ApexClassOrTrigger.Id,Coverage+FROM+ApexCodeCoverage+WHERE+ApexClassOrTrigger.Name+IN+('"
 	query += strings.Join(apexNames, "','")
 	query += "')"
 
-	return queryToolingApi[ApexCodeCoverage](c, query)
+	return queryToolingApi[ApexCodeCoverage](c, ctx, query)
 }
 
-func (c *Connection) RequestApexDependencies(metadataComponentTypes []string) ([]MetadataComponentDependency, error) {
+func (c *Connection) RequestApexDependencies(ctx context.Context, metadataComponentTypes []string) ([]MetadataComponentDependency, error) {
 	query := "SELECT+MetadataComponentName,MetadataComponentId,MetadataComponentType,RefMetadataComponentType,RefMetadataComponentName,RefMetadataComponentId+FROM+MetadataComponentDependency+WHERE+RefMetadataComponentType+IN+('ApexClass','ApexTrigger')+AND+MetadataComponentType+IN+('"
 	query += strings.Join(metadataComponentTypes, "','")
 	query += "')"
 
-	return queryToolingApi[MetadataComponentDependency](c, query)
+	return queryToolingApi[MetadataComponentDependency](c, ctx, query)
 }
 
-func (c *Connection) RequestApexClasses(names []string) ([]ApexClass, error) {
+func (c *Connection) RequestApexClasses(ctx context.Context, names []string) ([]ApexClass, error) {
 	query := "SELECT+Id,Name,SymbolTable+FROM+ApexClass+WHERE+Name+IN+('"
 	query += strings.Join(names, "','")
 	query += "')"
 
-	return queryToolingApi[ApexClass](c, query)
+	return queryToolingApi[ApexClass](c, ctx, query)
 }
 
-func (c *Connection) ExecuteAnonymousRest(body string) error {
+func (c *Connection) ExecuteAnonymousRest(ctx context.Context, body string) error {
 	strippedBody := url.QueryEscape(strings.Replace(body, "\n", " ", -1))
 	url := c.BaseUrl + "/services/data/v" + c.ApiVersion + "/tooling/executeAnonymous/?anonymousBody=" + strippedBody
 
@@ -97,7 +98,7 @@ func (c *Connection) ExecuteAnonymousRest(body string) error {
 		return fmt.Errorf("http.NewRequest: %w", err)
 	}
 
-	respBody, err := c.makeRequest(req)
+	respBody, err := c.makeRequest(ctx, req)
 	if err != nil {
 		return fmt.Errorf("c.makeRequest: %w", err)
 	}
@@ -131,14 +132,14 @@ func (c *Connection) ExecuteAnonymousRest(body string) error {
 	return errors.New("didn't compile: " + parsedResponse.CompileProblem)
 }
 
-func queryToolingApi[T toolingApiObject](c *Connection, query string) ([]T, error) {
+func queryToolingApi[T toolingApiObject](c *Connection, ctx context.Context, query string) ([]T, error) {
 	baseUrl := c.BaseUrl + "/services/data/v" + c.ApiVersion + "/tooling/query/?q="
 	req, err := http.NewRequest("GET", baseUrl+query, nil)
 	if err != nil {
 		return []T{}, fmt.Errorf("http.NewRequest: %w", err)
 	}
 
-	respBody, err := c.makeRequest(req)
+	respBody, err := c.makeRequest(ctx, req)
 	if err != nil {
 		return []T{}, fmt.Errorf("c.makeRequest: %w", err)
 	}

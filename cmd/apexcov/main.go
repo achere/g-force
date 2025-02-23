@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -77,7 +78,7 @@ func main() {
 		ClientSecret: cfg.ClientSecret,
 	}
 
-	tests, err := coverage.RequestTestsWithStrategy(*strategyArg, con, classes, triggers)
+	tests, err := coverage.RequestTestsWithStrategy(context.Background(), *strategyArg, con, classes, triggers)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error requesting coverage: %v\n", err.Error())
 		os.Exit(1)

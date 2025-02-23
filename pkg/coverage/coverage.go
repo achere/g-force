@@ -1,12 +1,14 @@
 package coverage
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math"
 	"slices"
 
 	"github.com/achere/g-force/pkg/sfapi"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -14,24 +16,25 @@ const (
 	StratMaxCoverageWithDeps = "MaxCoverageWithDeps"
 )
 
+type testNamesRequester func(context.Context, coverageDependenciesRequester, []string, []string) ([]string, error)
+
+type coverageDependenciesRequester interface {
+	apexCoverageRequester
+	RequestApexDependencies(ctx context.Context, metadataComponentTypes []string) ([]sfapi.MetadataComponentDependency, error)
+}
+
+type apexCoverageRequester interface {
+	RequestCoverage(ctx context.Context, apexNames []string) ([]sfapi.ApexCodeCoverage, error)
+	RequestApexClasses(ctx context.Context, names []string) ([]sfapi.ApexClass, error)
+}
+
 var strategyToGetterMap = map[string]testNamesRequester{
 	StratMaxCoverage:         requestTestsMaxCoverage,
 	StratMaxCoverageWithDeps: requestTestsMaxCoverageWithDeps,
 }
 
-type testNamesRequester func(coverageDependenciesRequester, []string, []string) ([]string, error)
-
-type coverageDependenciesRequester interface {
-	apexCoverageRequester
-	RequestApexDependencies(metadataComponentTypes []string) ([]sfapi.MetadataComponentDependency, error)
-}
-
-type apexCoverageRequester interface {
-	RequestCoverage(apexNames []string) ([]sfapi.ApexCodeCoverage, error)
-	RequestApexClasses(names []string) ([]sfapi.ApexClass, error)
-}
-
 func RequestTestsWithStrategy(
+	ctx context.Context,
 	strategy string,
 	c coverageDependenciesRequester,
 	classes []string,
@@ -40,18 +43,19 @@ func RequestTestsWithStrategy(
 	f := strategyToGetterMap[strategy]
 
 	if f == nil {
-		return []string{}, errors.New("Unsupported strategy provided: " + strategy)
+		return []string{}, errors.New("unsupported strategy provided: " + strategy)
 	}
 
-	return f(c, classes, triggers)
+	return f(ctx, c, classes, triggers)
 }
 
 func requestTestsMaxCoverage(
+	ctx context.Context,
 	c coverageDependenciesRequester,
 	classes []string,
 	triggers []string,
 ) ([]string, error) {
-	testMap, apexMap, tests, err := requestAndParseCoverage(c, slices.Concat(classes, triggers), classes)
+	testMap, apexMap, tests, err := requestAndParseCoverage(ctx, c, slices.Concat(classes, triggers), classes)
 	if err != nil {
 		return []string{}, fmt.Errorf("requestAndParseCoverage: %w", err)
 	}
@@ -65,17 +69,19 @@ func requestTestsMaxCoverage(
 }
 
 func requestTestsMaxCoverageWithDeps(
+	ctx context.Context,
 	c coverageDependenciesRequester,
 	classes []string,
 	triggers []string,
 ) ([]string, error) {
-	deps, err := c.RequestApexDependencies([]string{"ApexTrigger", "ApexClass"})
+	deps, err := c.RequestApexDependencies(ctx, []string{"ApexTrigger", "ApexClass"})
 	if err != nil {
 		return []string{}, fmt.Errorf("t.RequestApexDependencies: %w", err)
 	}
 	apexDeps := ParseDependencies(deps, classes, triggers)
 
 	testMap, apexMap, tests, err := requestAndParseCoverage(
+		ctx,
 		c,
 		slices.Concat(classes, triggers, apexDeps),
 		classes,
@@ -93,63 +99,42 @@ func requestTestsMaxCoverageWithDeps(
 }
 
 func requestAndParseCoverage(
+	ctx context.Context,
 	c apexCoverageRequester,
 	apex []string,
 	classes []string,
 ) (map[string]Test, map[string]Apex, []string, error) {
-	var (
-		chCov = make(chan []sfapi.ApexCodeCoverage)
-		chCls = make(chan []sfapi.ApexClass)
-		chErr = make(chan error)
-	)
-	defer close(chErr)
-
-	go func() {
-		defer close(chCov)
-		coverages, err := c.RequestCoverage(apex)
-		if err != nil {
-			chErr <- fmt.Errorf("t.RequestCoverage: %w", err)
-		} else {
-			chCov <- coverages
-		}
-	}()
-
-	go func() {
-		defer close(chCls)
-		apiClasses, err := c.RequestApexClasses(classes)
-		if err != nil {
-			chErr <- fmt.Errorf("t.RequestApexClasses: %w", err)
-		} else {
-			chCls <- apiClasses
-		}
-	}()
+	g, ctx := errgroup.WithContext(context.Background())
 
 	var (
-		coverages  []sfapi.ApexCodeCoverage
-		apiClasses []sfapi.ApexClass
+		coverages  *[]sfapi.ApexCodeCoverage
+		apiClasses *[]sfapi.ApexClass
 	)
 
-	for coverages == nil || apiClasses == nil {
-		select {
-		case err := <-chErr:
-			return map[string]Test{}, map[string]Apex{}, []string{}, err
-		case cov, ok := <-chCov:
-			if ok {
-				coverages = cov
-			} else {
-				chCov = nil
-			}
-		case apiCls, ok := <-chCls:
-			if ok {
-				apiClasses = apiCls
-			} else {
-				chCls = nil
-			}
+	g.Go(func() error {
+		cov, err := c.RequestCoverage(ctx, apex)
+		if err != nil {
+			return err
 		}
+		coverages = &cov
+		return nil
+	})
+
+	g.Go(func() error {
+		cls, err := c.RequestApexClasses(ctx, classes)
+		if err != nil {
+			return err
+		}
+		apiClasses = &cls
+		return nil
+	})
+
+	if err := g.Wait(); err != nil {
+		return map[string]Test{}, map[string]Apex{}, []string{}, err
 	}
 
-	testMap, apexMap := ParseCoverage(coverages)
-	tests := findTestClasses(apiClasses)
+	testMap, apexMap := ParseCoverage(*coverages)
+	tests := findTestClasses(*apiClasses)
 
 	return testMap, apexMap, tests, nil
 }

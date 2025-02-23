@@ -1,6 +1,7 @@
 package coverage
 
 import (
+	"context"
 	"testing"
 
 	"github.com/achere/g-force/pkg/sfapi"
@@ -84,39 +85,40 @@ func TestRequestTestsMaxCoverage(t *testing.T) {
 		},
 	}
 
-	requestEmptyApexClasses := func(s []string) ([]sfapi.ApexClass, error) { return []sfapi.ApexClass{}, nil }
+	requestEmptyApexClasses := func(ctx context.Context, s []string) ([]sfapi.ApexClass, error) { return []sfapi.ApexClass{}, nil }
 
 	data := []struct {
 		name            string
-		requestCoverage func([]string) ([]sfapi.ApexCodeCoverage, error)
+		requestCoverage func(context.Context, []string) ([]sfapi.ApexCodeCoverage, error)
 		tests           []string
 		mustErr         bool
 	}{
 		{
 			"success",
-			func(apexNames []string) ([]sfapi.ApexCodeCoverage, error) { return goodCov, nil },
+			func(ctx context.Context, apexNames []string) ([]sfapi.ApexCodeCoverage, error) { return goodCov, nil },
 			[]string{"Class1_Test", "Trigger1_Test"},
 			false,
 		},
 		{
 			"missing class",
-			func(apexNames []string) ([]sfapi.ApexCodeCoverage, error) { return missClass, nil },
+			func(ctx context.Context, apexNames []string) ([]sfapi.ApexCodeCoverage, error) { return missClass, nil },
 			[]string{},
 			true,
 		},
 		{
 			"insufficient coverage",
-			func(apexNames []string) ([]sfapi.ApexCodeCoverage, error) { return insuffCov, nil },
+			func(ctx context.Context, apexNames []string) ([]sfapi.ApexCodeCoverage, error) { return insuffCov, nil },
 			[]string{},
 			true,
 		},
 	}
 
+	ctx := context.Background()
 	for _, d := range data {
 		t.Run(d.name, func(t *testing.T) {
 			ts := RequesterStub{requestCoverage: d.requestCoverage, requestApexClasses: requestEmptyApexClasses}
 
-			tests, err := RequestTestsWithStrategy(StratMaxCoverage, ts, []string{"Class1"}, []string{"Trigger1"})
+			tests, err := RequestTestsWithStrategy(ctx, StratMaxCoverage, ts, []string{"Class1"}, []string{"Trigger1"})
 
 			if d.mustErr && err == nil {
 				t.Errorf("Expected error, got %v\n", tests)
@@ -130,7 +132,7 @@ func TestRequestTestsMaxCoverage(t *testing.T) {
 }
 
 func TestRequestMaxCoverageWithDeps(t *testing.T) {
-	requestApexDependencies := func(metadataComponentTypes []string) ([]sfapi.MetadataComponentDependency, error) {
+	requestApexDependencies := func(ctx context.Context, metadataComponentTypes []string) ([]sfapi.MetadataComponentDependency, error) {
 		return []sfapi.MetadataComponentDependency{
 			{
 				Name:    "Trigger1",
@@ -158,7 +160,7 @@ func TestRequestMaxCoverageWithDeps(t *testing.T) {
 			},
 		}, nil
 	}
-	requestApexClasses := func(s []string) ([]sfapi.ApexClass, error) { return []sfapi.ApexClass{}, nil }
+	requestApexClasses := func(ctx context.Context, s []string) ([]sfapi.ApexClass, error) { return []sfapi.ApexClass{}, nil }
 
 	goodCov := []sfapi.ApexCodeCoverage{
 		{
@@ -196,15 +198,16 @@ func TestRequestMaxCoverageWithDeps(t *testing.T) {
 		},
 	}
 
+	ctx := context.Background()
 	data := []struct {
 		name            string
-		requestCoverage func([]string) ([]sfapi.ApexCodeCoverage, error)
+		requestCoverage func(context.Context, []string) ([]sfapi.ApexCodeCoverage, error)
 		tests           []string
 		mustErr         bool
 	}{
 		{
 			"success",
-			func(apexNames []string) ([]sfapi.ApexCodeCoverage, error) {
+			func(ctx context.Context, apexNames []string) ([]sfapi.ApexCodeCoverage, error) {
 				if !slicesEqualIgnoreOrder(apexNames, []string{"Class1", "Trigger1"}) {
 					t.Errorf("Requested coverage with incorrect parameters: %v", apexNames)
 				}
@@ -223,7 +226,7 @@ func TestRequestMaxCoverageWithDeps(t *testing.T) {
 				requestApexClasses:      requestApexClasses,
 			}
 
-			tests, err := RequestTestsWithStrategy(StratMaxCoverageWithDeps, ts, []string{}, []string{"Trigger1"})
+			tests, err := RequestTestsWithStrategy(ctx, StratMaxCoverageWithDeps, ts, []string{}, []string{"Trigger1"})
 
 			if d.mustErr && err == nil {
 				t.Errorf("Expected error, got %v\n", tests)
@@ -241,19 +244,19 @@ func slicesEqualIgnoreOrder(s1, s2 []string) bool {
 }
 
 type RequesterStub struct {
-	requestCoverage         func([]string) ([]sfapi.ApexCodeCoverage, error)
-	requestApexDependencies func([]string) ([]sfapi.MetadataComponentDependency, error)
-	requestApexClasses      func([]string) ([]sfapi.ApexClass, error)
+	requestCoverage         func(context.Context, []string) ([]sfapi.ApexCodeCoverage, error)
+	requestApexDependencies func(context.Context, []string) ([]sfapi.MetadataComponentDependency, error)
+	requestApexClasses      func(context.Context, []string) ([]sfapi.ApexClass, error)
 }
 
-func (ts RequesterStub) RequestCoverage(apexNames []string) ([]sfapi.ApexCodeCoverage, error) {
-	return ts.requestCoverage(apexNames)
+func (ts RequesterStub) RequestCoverage(ctx context.Context, apexNames []string) ([]sfapi.ApexCodeCoverage, error) {
+	return ts.requestCoverage(ctx, apexNames)
 }
 
-func (ts RequesterStub) RequestApexDependencies(metadataComponentTypes []string) ([]sfapi.MetadataComponentDependency, error) {
-	return ts.requestApexDependencies(metadataComponentTypes)
+func (ts RequesterStub) RequestApexDependencies(ctx context.Context, metadataComponentTypes []string) ([]sfapi.MetadataComponentDependency, error) {
+	return ts.requestApexDependencies(ctx, metadataComponentTypes)
 }
 
-func (ts RequesterStub) RequestApexClasses(names []string) ([]sfapi.ApexClass, error) {
-	return ts.requestApexClasses(names)
+func (ts RequesterStub) RequestApexClasses(ctx context.Context, names []string) ([]sfapi.ApexClass, error) {
+	return ts.requestApexClasses(ctx, names)
 }
