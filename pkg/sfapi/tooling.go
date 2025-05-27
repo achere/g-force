@@ -93,12 +93,12 @@ func (c *Connection) ExecuteAnonymousRest(ctx context.Context, body string) erro
 	strippedBody := url.QueryEscape(strings.Replace(body, "\n", " ", -1))
 	url := c.BaseUrl + "/services/data/v" + c.ApiVersion + "/tooling/executeAnonymous/?anonymousBody=" + strippedBody
 
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return fmt.Errorf("http.NewRequest: %w", err)
 	}
 
-	respBody, err := c.makeRequest(ctx, req)
+	respBody, err := c.DoRequest(ctx, req)
 	if err != nil {
 		return fmt.Errorf("c.makeRequest: %w", err)
 	}
@@ -134,12 +134,12 @@ func (c *Connection) ExecuteAnonymousRest(ctx context.Context, body string) erro
 
 func queryToolingApi[T toolingApiObject](c *Connection, ctx context.Context, query string) ([]T, error) {
 	baseUrl := c.BaseUrl + "/services/data/v" + c.ApiVersion + "/tooling/query/?q="
-	req, err := http.NewRequest("GET", baseUrl+query, nil)
+	req, err := http.NewRequest(http.MethodGet, baseUrl+query, nil)
 	if err != nil {
 		return []T{}, fmt.Errorf("http.NewRequest: %w", err)
 	}
 
-	respBody, err := c.makeRequest(ctx, req)
+	respBody, err := c.DoRequest(ctx, req)
 	if err != nil {
 		return []T{}, fmt.Errorf("c.makeRequest: %w", err)
 	}
