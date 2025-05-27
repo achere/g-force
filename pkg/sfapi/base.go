@@ -19,10 +19,10 @@ type Connection struct {
 	ClientId     string
 	ClientSecret string
 	accessToken  string
-	httpClient   *http.Client
+	HttpClient   *http.Client
 }
 
-type tokenResponse struct {
+type TokenResponse struct {
 	AccessToken string `json:"access_token"`
 }
 
@@ -38,7 +38,7 @@ func (c *Connection) refreshToken(ctx context.Context) (string, error) {
 	return c.getTokenClientCredentials(ctx)
 }
 
-func (c *Connection) makeRequest(ctx context.Context, req *http.Request) ([]byte, error) {
+func (c *Connection) DoRequest(ctx context.Context, req *http.Request) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return []byte{}, fmt.Errorf("context canceled: %w", err)
 	}
@@ -50,11 +50,11 @@ func (c *Connection) makeRequest(ctx context.Context, req *http.Request) ([]byte
 	req.Header.Set("Authorization", "Bearer "+token)
 
 	req = req.WithContext(ctx)
-	if c.httpClient == nil {
-		c.httpClient = &http.Client{}
+	if c.HttpClient == nil {
+		c.HttpClient = &http.Client{}
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.HttpClient.Do(req)
 	if err != nil {
 		return []byte{}, fmt.Errorf("c.httpClient.Do: %w", err)
 	}
@@ -68,7 +68,7 @@ func (c *Connection) makeRequest(ctx context.Context, req *http.Request) ([]byte
 		req.Header.Set("Authorization", "Bearer "+token)
 
 		newReq := req.Clone(ctx)
-		newResp, err := c.httpClient.Do(newReq)
+		newResp, err := c.HttpClient.Do(newReq)
 		if err != nil {
 			return []byte{}, fmt.Errorf("c.httpClient.Do: %w", err)
 		}
@@ -99,7 +99,7 @@ func (c *Connection) getTokenClientCredentials(ctx context.Context) (string, err
 	formData.Set("client_id", c.ClientId)
 	formData.Set("client_secret", c.ClientSecret)
 
-	req, err := http.NewRequestWithContext(ctx, "POST", c.BaseUrl+"/services/oauth2/token", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseUrl+"/services/oauth2/token", nil)
 	if err != nil {
 		return "", fmt.Errorf("http.NewRequestWithContext: %w", err)
 	}
@@ -107,11 +107,11 @@ func (c *Connection) getTokenClientCredentials(ctx context.Context) (string, err
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Body = io.NopCloser(strings.NewReader(formData.Encode()))
 
-	if c.httpClient == nil {
-		c.httpClient = &http.Client{}
+	if c.HttpClient == nil {
+		c.HttpClient = &http.Client{}
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.HttpClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("httpClient.Do: %w", err)
 	}
@@ -126,7 +126,7 @@ func (c *Connection) getTokenClientCredentials(ctx context.Context) (string, err
 		return "", fmt.Errorf("io.ReadAll: %w", err)
 	}
 
-	var token tokenResponse
+	var token TokenResponse
 	err = json.Unmarshal(respBody, &token)
 	if err != nil {
 		return "", fmt.Errorf("json.Unmarshal: %w", err)
