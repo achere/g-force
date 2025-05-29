@@ -61,16 +61,16 @@ func (c *Connection) DoRequest(ctx context.Context, req *http.Request) ([]byte, 
 	defer resp.Body.Close()
 
 	if resp.StatusCode == 403 {
-		token, err := c.refreshToken(ctx)
-		if err != nil {
-			return []byte{}, fmt.Errorf("c.refreshToken: %w", err)
+		token, errToken := c.refreshToken(ctx)
+		if errToken != nil {
+			return []byte{}, fmt.Errorf("c.refreshToken: %w", errToken)
 		}
 		req.Header.Set("Authorization", "Bearer "+token)
 
 		newReq := req.Clone(ctx)
-		newResp, err := c.HttpClient.Do(newReq)
-		if err != nil {
-			return []byte{}, fmt.Errorf("c.httpClient.Do: %w", err)
+		newResp, errToken := c.HttpClient.Do(newReq)
+		if errToken != nil {
+			return []byte{}, fmt.Errorf("c.httpClient.Do: %w", errToken)
 		}
 		defer newResp.Body.Close()
 
@@ -78,15 +78,21 @@ func (c *Connection) DoRequest(ctx context.Context, req *http.Request) ([]byte, 
 			resp = newResp
 		}
 	}
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return []byte{}, fmt.Errorf("io.ReadAll: %w", err)
+	}
+
 	if resp.StatusCode == 200 {
-		respBody, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return []byte{}, fmt.Errorf("io.ReadAll: %w", err)
-		}
 		return respBody, nil
 	}
 
-	return []byte{}, errors.New("Unexpected status code returned: " + strconv.Itoa(resp.StatusCode))
+	return respBody, fmt.Errorf(
+		"unexpected status code returned: %s, body: %s",
+		strconv.Itoa(resp.StatusCode),
+		string(respBody),
+	)
 }
 
 func (c *Connection) getTokenClientCredentials(ctx context.Context) (string, error) {

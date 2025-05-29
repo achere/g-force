@@ -23,7 +23,7 @@ func TestCreateCollection(t *testing.T) {
 	}{
 		{
 			name:    "Single batch success",
-			records: makeRecords(150),
+			records: makeCollectionsRecords(150),
 			mockHandler: func(w http.ResponseWriter, r *http.Request) {
 				var body collectionsRequest
 				json.NewDecoder(r.Body).Decode(&body)
@@ -36,7 +36,7 @@ func TestCreateCollection(t *testing.T) {
 		},
 		{
 			name:    "Single batch error",
-			records: makeRecords(100),
+			records: makeCollectionsRecords(100),
 			mockHandler: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusInternalServerError)
 				fmt.Fprintln(w, "Internal Server Error")
@@ -46,7 +46,7 @@ func TestCreateCollection(t *testing.T) {
 		},
 		{
 			name:    "Two batches",
-			records: makeRecords(250),
+			records: makeCollectionsRecords(250),
 			mockHandler: func(w http.ResponseWriter, r *http.Request) {
 				var body collectionsRequest
 				json.NewDecoder(r.Body).Decode(&body)
@@ -72,7 +72,7 @@ func TestCreateCollection(t *testing.T) {
 				HttpClient: mockServer.Client(),
 			}
 
-			response, err := CollectionsCreate(ctx, c, false, tt.records)
+			res, err := CollectionsCreate(c, ctx, false, tt.records)
 
 			if tt.expectError {
 				assert.Error(t, err, "Expected an error")
@@ -84,7 +84,7 @@ func TestCreateCollection(t *testing.T) {
 			}
 
 			resLenghts := make([]int, len(tt.expectedResponseLenghts))
-			for i, r := range response {
+			for i, r := range res {
 				resLenghts[i] = len(r)
 			}
 			slices.SortFunc(resLenghts, func(a, b int) int { return b - a })
@@ -94,21 +94,7 @@ func TestCreateCollection(t *testing.T) {
 	}
 }
 
-func respondWithToken(h http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/services/oauth2/token" {
-			h.ServeHTTP(w, r)
-			return
-		}
-
-		body := sfapi.TokenResponse{AccessToken: "token"}
-		res, _ := json.Marshal(body)
-		w.Write(res)
-		w.Header().Add("Content-Type", "application/json")
-	})
-}
-
-func makeRecords(n int) []CollectionsRecord {
+func makeCollectionsRecords(n int) []CollectionsRecord {
 	records := make([]CollectionsRecord, n)
 	for i := range n {
 		records[i] = CollectionsRecord{

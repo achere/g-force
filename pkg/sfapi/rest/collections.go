@@ -59,11 +59,25 @@ func (r *CollectionsRecord) UnmarshalJSON(data []byte) error {
 	}
 
 	for key, value := range raw {
-		if key != "attributes" {
-			r.Fields[key] = value
+		if key == "attributes" {
+			continue
 		}
-	}
 
+		if m, ok := value.(map[string]any); ok {
+			if _, hasAttrs := m["attributes"]; hasAttrs {
+				nestedBytes, err := json.Marshal(m)
+				if err == nil {
+					var nested CollectionsRecord
+					if err := json.Unmarshal(nestedBytes, &nested); err == nil {
+						r.Fields[key] = &nested
+						continue
+					}
+				}
+			}
+		}
+
+		r.Fields[key] = value
+	}
 	return nil
 }
 
@@ -84,8 +98,8 @@ type CollectionsError struct {
 // Warning: allOrNone parameter works only within each batch, if some of the batches were
 // successful, they will not be rolled back.
 func CollectionsCreate(
-	ctx context.Context,
 	c *sfapi.Connection,
+	ctx context.Context,
 	allOrNone bool,
 	records []CollectionsRecord,
 ) ([][]CollectionsResponse, error) {
@@ -111,7 +125,7 @@ func CollectionsCreate(
 		}
 
 		cUrl := c.BaseUrl + "/services/data/v" + c.ApiVersion + "/composite/sobjects"
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, cUrl, bytes.NewBuffer(jsonBody))
+		req, err := http.NewRequest(http.MethodPost, cUrl, bytes.NewBuffer(jsonBody))
 		if err != nil {
 			return nil, fmt.Errorf("http.NewRequest: %w", err)
 		}
