@@ -105,7 +105,10 @@ func CollectionsCreate(
 ) ([][]CollectionsResponse, error) {
 	var mu sync.Mutex
 	var result *multierror.Error
-	size := len(records)/200 + 1
+	size := len(records) / 200
+	if len(records)%200 != 0 {
+		size++
+	}
 	responses := make([][]CollectionsResponse, size)
 	g, _ := errgroup.WithContext(ctx)
 
