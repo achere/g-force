@@ -106,7 +106,7 @@ func CollectionsCreate(
 	var mu sync.Mutex
 	var result *multierror.Error
 	size := len(records)/200 + 1
-	responses := make([][]CollectionsResponse, 0, size)
+	responses := make([][]CollectionsResponse, size)
 	g, _ := errgroup.WithContext(ctx)
 
 	for i := range size {
@@ -156,7 +156,7 @@ func CollectionsCreate(
 			}
 
 			mu.Lock()
-			responses = append(responses, batchResponses)
+			responses[i] = batchResponses
 			mu.Unlock()
 
 			return nil
